@@ -21,12 +21,15 @@ Shared rails: ESP32 `3V3` -> breadboard + rail (logic power). ESP32 `5Vin` -> se
 | | SCK | ESP32 GPIO9 (I2C SCL) |
 | | SDA | ESP32 GPIO8 (I2C SDA) |
 | IMU (BMI160) | VIN | 3.3V rail |
+| | 3V3 | **unconnected** — this is the onboard LDO's output, not an input; don't also feed it from the ESP32 |
 | | GND | GND rail |
 | | SCL | GPIO9 (shared I2C bus) |
 | | SDA | GPIO8 (shared I2C bus) |
 | | CS | 3.3V rail (**must be tied high, or module falls back to SPI mode and I2C won't respond**) |
 | | SA0 | GND (addr 0x68) or 3.3V (0x69) — pick one, avoid clash if anything else uses 0x68 |
-| | INT1/INT2, SCX, SDX, OCS | unused for now |
+| | OCS | unconnected (aux-interface chip select, unused — if I2C is flaky, try tying this high or low, floating aux pins are a known culprit) |
+| | INT1 / INT2 | unconnected (only needed for interrupt-driven orientation detection instead of polling) |
+| | SCX / SDX | unconnected (aux I2C interface, for chaining a magnetometer — not used) |
 | LED strip | 5V | 5V rail (from `5Vin`) |
 | | GND | GND rail |
 | | DIN | ESP32 data GPIO -> 330-470Ω resistor -> strip DIN (no level shifter for prototype, see note) |

@@ -77,3 +77,30 @@ These make the circuit work properly:
 - **1000µF capacitor** across LED power - stops power spikes that can kill the first LED.
 - **330-470Ω resistor** on the LED data line.
 - **Schottky diode (SS34)** on VIN - protects the board when the programming USB and the 5V supply are both plugged in.
+
+## Firmware
+
+First bring-up test (`src/main.cpp`) exercises just the display and IMU - see [Req-Design.md](Req-Design.md) for the wiring it assumes. Built with [PlatformIO](https://platformio.org/).
+
+### Flashing
+
+1. Install PlatformIO Core once: `pip3 install -U platformio`
+   - If `pio: command not found` afterward, it installed to a user bin not on your `PATH` (macOS pip does this). Either add it: `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`, or run everything below as `python3 -m platformio ...` instead of `pio ...`.
+2. Plug in the board and find its port:
+   ```
+   ls /dev/cu.*
+   ```
+   On this board it's one of the `usbmodem*` entries (e.g. `/dev/cu.usbmodem204NTLECA5362` or `/dev/cu.usbmodem1101` - the board exposes two USB-C ports, try one and fall back to the other if it doesn't respond).
+3. Build and flash with the `Makefile` (`PORT` defaults to `/dev/cu.usbmodem1101`, the confirmed-working port on this board - override if yours differs):
+   ```
+   make flash PORT=/dev/cu.usbmodemXXXX
+   ```
+   This uploads then opens the serial monitor. First run installs PlatformIO and pulls the toolchain/libraries automatically (`setup`, ~2 min one-time cost) - every target depends on it, so you don't need to run it separately. Other targets: `make build`, `make upload`, `make monitor`, `make ports` (lists connected devices), `make clean`.
+
+   Equivalent raw PlatformIO commands, if you'd rather skip the Makefile:
+   ```
+   pio run -t upload --upload-port /dev/cu.usbmodemXXXX
+   pio device monitor -p /dev/cu.usbmodemXXXX -b 115200
+   ```
+
+If upload hangs at "Connecting...", hold **BOOT**, tap **RESET**, release **BOOT**, then retry.
