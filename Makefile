@@ -11,6 +11,7 @@
 #   test-orientation      flips the display 180 based on IMU accel
 #   test-orientation-led  same, plus LED color change
 #   test-button-timer     button-set H:M:S timer + 10-LED countdown bar
+#   test-program-menu     menu (Timer / Available-Busy) + IMU auto-flip
 #
 # build/upload/monitor/flash all depend on setup having run at least once,
 # so a fresh checkout just needs `make flash` - setup runs automatically.

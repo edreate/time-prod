@@ -101,6 +101,7 @@ hardware piece by piece — useful after wiring changes:
 | `test-orientation` | Just the display auto-flip |
 | `test-orientation-led` | Auto-flip + LED color change |
 | `test-button-timer` | Button-set H:M:S timer + 10-LED countdown progress bar |
+| `test-program-menu` | Menu (Timer / Available-Busy) + IMU auto-flip, F/B/L/R button mapping |
 
 Flash one with e.g. `make flash ENV=test-bringup PORT=...`.
 
