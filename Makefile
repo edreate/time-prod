@@ -25,7 +25,7 @@
 
 PIO  ?= python3 -m platformio
 PORT ?= /dev/cu.usbmodem1101
-ENV  ?= test-orientation-led
+ENV  ?= esp32-s3
 
 .PHONY: setup build upload monitor flash clean ports
 
