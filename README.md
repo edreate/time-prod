@@ -4,19 +4,25 @@ A small desk gadget that protects your focus time. It sits on your desk as a
 phone dock, or clips onto the top or bottom edge of your monitor. One glance
 tells you (and everyone walking by) what's going on:
 
-- **Focus timer** — press up/down to pick the minutes, click to start. The
-  screen counts down.
-- **Status light** — LEDs glow **green** (free), **amber** (busy / in a
-  meeting), or **red** (focusing — do not disturb). The color follows the
-  timer automatically, or you can set it yourself with one click: an instant
-  meeting indicator.
+- **Menu** — click cycles between Focus Timer, Pomodoro, and Available/Busy.
+  Long-press the center click, from anywhere, to jump back to the menu.
+- **Focus timer** — set an H:M:S duration, click to start. The screen counts
+  down.
+- **Pomodoro** — classic work / short break / work / ... / long break cycle,
+  auto-advancing between phases. Durations and session count are configurable
+  from the Wi-Fi settings page and persist across power-off.
+- **Status light** — LEDs glow **green** (free), **amber** (busy / paused),
+  **red** (focusing / do not disturb), or **blue** (pomodoro long break). The
+  color follows whatever's running automatically, or you can set it yourself
+  with one click: an instant meeting indicator.
 - **Phone dock** — park your phone on it and out of your hands. (Auto-detect
   of a docked phone is on the [roadmap](#roadmap).)
 - **Mounts either way up** — clip it to the top or bottom monitor edge; the
   screen flips itself the right way up automatically.
-- **Settings over Wi-Fi** — the device broadcasts its own Wi-Fi hotspot. Join
-  it from your phone and open a simple web page to change brightness, default
-  timer length, and more. No app to install.
+- **Settings over Wi-Fi** — the device always broadcasts its own Wi-Fi
+  hotspot, no internet or home network required. Join it and open a simple
+  web page to change brightness, timer/Pomodoro durations, and more. No app
+  to install. (No real-time clock yet — see [roadmap](#roadmap).)
 
 ## The prototype today
 
@@ -24,8 +30,9 @@ Everything below is running on a breadboard right now:
 
 ![Breadboard prototype](docs/breadboard.jpeg)
 
-**Working:** display, motion sensor, auto-flip, LED strip, the focus timer,
-manual status override, and the Wi-Fi settings page.
+**Working:** display, motion sensor, auto-flip, LED strip, the menu, focus
+timer, Pomodoro, manual status override, and the Wi-Fi hotspot + settings
+page.
 **Not built yet:** phone-presence sensing, enclosure, proper 5V LED power —
 see the [roadmap](#roadmap).
 
@@ -33,18 +40,26 @@ see the [roadmap](#roadmap).
 
 The 5-way button does everything:
 
-| Button | When idle | While running | While paused |
-|---|---|---|---|
-| **Up / Down** | Set the minutes (±5) | — | Down = cancel session |
-| **Click** (center) | Start the timer | Pause | Resume |
-| **Left / Right** | Cycle the status light: auto → free → busy → focus → auto (works anytime) |
+| Button | Menu | Setting the timer | Timer running/paused | Pomodoro | Availability |
+|---|---|---|---|---|---|
+| **Up / Down** | Move cursor | Change selected field | — | — | — |
+| **Left / Right** | Select field | Down = cancel (paused) | Cycle status light (works almost anywhere) |
+| **Click** (center) | Open program | Start | Pause / resume | Start / pause / resume | Toggle available/busy |
+| **Hold click** | — | Return to menu, from any screen |
 
-When the timer hits zero the LEDs blink green and the screen shows *Done!* —
-click to dismiss (or it clears itself after a minute).
+When a focus session hits zero the LEDs blink green and the screen shows
+*Done!* — click to dismiss (or it clears itself after a minute). Pomodoro
+briefly blinks the next phase's color between phases, then auto-continues —
+press any button to skip the wait.
+
+A fourth menu item, **Info**, shows the hotspot's name, IP address, and the
+device's MAC address — handy for troubleshooting the Wi-Fi connection.
 
 **Changing settings:** on your phone, join the Wi-Fi network **FocusDock**
-(password `focus1234`), then open **http://192.168.4.1** in a browser. Change
-what you like, press Save — settings persist across power-off.
+(password `focus1234`), then open **http://192.168.4.1** in a browser.
+Change brightness, default timer length, Pomodoro durations, and auto-flip,
+press Save — settings persist across power-off. The hotspot is always on, no
+internet or home network needed.
 
 ## What's inside
 
@@ -137,8 +152,8 @@ What it takes to go from breadboard to a product with a long life:
 
 **Firmware**
 - [ ] Dock/undock actions (auto-start focus session when phone is docked)
-- [ ] Colors and more settings editable from the Wi-Fi page
-- [ ] Wi-Fi client mode + NTP so the idle screen can show a clock
+- [x] Colors and more settings editable from the Wi-Fi page
+- [ ] Wi-Fi client mode + NTP so the menu screen can show a clock
 - [ ] Calendar integration (busy light follows your meetings automatically)
 - [ ] Optional buzzer/chime when the session ends
 - [ ] Over-the-air firmware updates (no cable needed)
