@@ -1,6 +1,6 @@
 # Focus & Availability Device
 
-A small device that clips onto the top or bottom edge of your monitor. It helps you protect your focus time - set a timer, show your availability to the team, and park your phone. One device that keeps you on task and tells others not to interrupt.
+A small device that can be kept on a table where phone can be docked or clips onto the top or bottom edge of your monitor (oreintation changable). It helps you protect your focus time - set a timer, show your availability to the team, and park your phone. One device that keeps you on task and tells others not to interrupt.
 
 ## Features
 
@@ -18,6 +18,8 @@ A small device that clips onto the top or bottom edge of your monitor. It helps 
 - **IMU** - detects mounting orientation, auto-flips the UI
 - **Presence sensor** (IR, light, or pressure) - detects when a phone is docked
 
+
+# Work in Progess:
 ## BOM / Actual Tech (work in progress)
 
 The parts we're actually looking at. Prices are the current discounted price from the links below (EUR, may change).
