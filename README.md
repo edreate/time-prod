@@ -80,7 +80,12 @@ These make the circuit work properly:
 
 ## Firmware
 
-First bring-up test (`src/main.cpp`) exercises just the display and IMU - see [Req-Design.md](Req-Design.md) for the wiring it assumes. Built with [PlatformIO](https://platformio.org/).
+Two test builds so far, selected via PlatformIO's `-e <environment>` (see [platformio.ini](platformio.ini)). Both assume the wiring in [Req-Design.md](Req-Design.md). Built with [PlatformIO](https://platformio.org/).
+
+| `ENV` | Source | What it does |
+|---|---|---|
+| `esp32-s3` (default) | `src/main.cpp` | I2C scan + display + IMU bring-up test |
+| `esp32-s3-orientation` | `src/test_orientation.cpp` | Flips the display 180° based on IMU accel (see note below) |
 
 ### Flashing
 
@@ -90,17 +95,34 @@ First bring-up test (`src/main.cpp`) exercises just the display and IMU - see [R
    ```
    ls /dev/cu.*
    ```
-   On this board it's one of the `usbmodem*` entries (e.g. `/dev/cu.usbmodem204NTLECA5362` or `/dev/cu.usbmodem1101` - the board exposes two USB-C ports, try one and fall back to the other if it doesn't respond).
-3. Build and flash with the `Makefile` (`PORT` defaults to `/dev/cu.usbmodem1101`, the confirmed-working port on this board - override if yours differs):
+   It's one of the `usbmodem*` entries, not `Bluetooth-Incoming-Port` or `debug-console`. The board exposes two USB-C ports - if one doesn't respond, try the other. Note: macOS can reassign this name across reconnects/reboots, so re-check it if uploads suddenly can't find the port.
+3. Build and flash with the `Makefile` (`PORT` defaults to the last-confirmed-working port on this board - override if yours differs; `ENV` defaults to `esp32-s3`, override to flash the orientation test):
    ```
    make flash PORT=/dev/cu.usbmodemXXXX
+   make flash PORT=/dev/cu.usbmodemXXXX ENV=esp32-s3-orientation
    ```
    This uploads then opens the serial monitor. First run installs PlatformIO and pulls the toolchain/libraries automatically (`setup`, ~2 min one-time cost) - every target depends on it, so you don't need to run it separately. Other targets: `make build`, `make upload`, `make monitor`, `make ports` (lists connected devices), `make clean`.
 
    Equivalent raw PlatformIO commands, if you'd rather skip the Makefile:
    ```
-   pio run -t upload --upload-port /dev/cu.usbmodemXXXX
+   pio run -e esp32-s3-orientation -t upload --upload-port /dev/cu.usbmodemXXXX
    pio device monitor -p /dev/cu.usbmodemXXXX -b 115200
    ```
 
-If upload hangs at "Connecting...", hold **BOOT**, tap **RESET**, release **BOOT**, then retry.
+   Command last used to flash `test_orientation.cpp` (port will likely differ for you - see step 2):
+   ```
+   make upload ENV=esp32-s3-orientation PORT=/dev/cu.usbmodem1101
+   ```
+
+If upload hangs at "Connecting...", hold **BOOT**, tap **RESET**, release **BOOT**, then retry. If it fails partway through with an `esptool` checksum error, that's a flaky USB connection, not a firmware bug - retry, or reseat the cable.
+
+### Orientation detection (`esp32-s3-orientation`)
+
+The device only clips in two valid positions (top or bottom edge of the monitor), not continuous tilt, so this is a two-state classifier, not full attitude estimation - a single accel axis is enough:
+
+- **Axis & threshold**: `ax` (accel X) measured ~+1g mounted vertically in normal orientation, ~-1g flipped. Threshold is set at ±0.5g.
+- **Hysteresis**: the dead zone between -0.5g and +0.5g means noise near the crossover doesn't flicker the display - only a reading clearly past the threshold moves the state.
+- **Debounce**: a reading has to stay past the threshold for 350ms before the flip commits, so a bump or mid-handling tilt doesn't trigger a false flip.
+- **Smoothing**: raw accel is exponentially smoothed (`EMA_ALPHA = 0.2`) before thresholding to cut sensor noise.
+
+If the IMU's mounting inside the enclosure changes, re-measure `ax` in both orientations and adjust `FLIP_THRESHOLD` / the axis used in `src/test_orientation.cpp` accordingly.
