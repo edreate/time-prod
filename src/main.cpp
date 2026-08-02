@@ -10,14 +10,10 @@
 //     indicator) from anywhere except while editing the timer's H:M:S.
 //   - Auto-flip: the screen rotates 180 degrees when the device is mounted
 //     upside down (top vs bottom edge of the monitor), using the IMU.
-//   - Wi-Fi: the device always broadcasts its own hotspot for settings
-//     access, and can also join your home Wi-Fi (as a client) to fetch the
-//     real time over NTP. Reachable at http://192.168.4.1 (hotspot) or
-//     http://focusdock.local (once joined to your home network).
-//   - Clock: shown on the menu screen once synced over NTP; shows "--:--"
-//     until then. No hardware RTC - if there's no Wi-Fi/internet at boot,
-//     there's no wall-clock time, but every countdown timer keeps working
-//     regardless (they never depend on the wall clock).
+//   - Wi-Fi: the device broadcasts its own hotspot at all times, so you can
+//     always reach the settings page at http://192.168.4.1 - no internet or
+//     home network required. (Home Wi-Fi client mode / NTP clock is on the
+//     roadmap, not wired up yet.)
 //   - Long-press the center click, from any screen, to return to the menu.
 //
 // Wiring: see docs/HARDWARE.md. New to electronics? See docs/ELECTRONICS.md.
@@ -30,9 +26,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <WiFi.h>
 #include <WebServer.h>
-#include <ESPmDNS.h>
 #include <Preferences.h>
-#include <time.h>
 
 // ============================== CONFIG ==============================
 // ---- Pins (change these if you wire things differently) ----
@@ -85,15 +79,10 @@
 // ---- Wi-Fi settings hotspot (always on) ----
 #define WIFI_AP_SSID              "FocusDock"
 #define WIFI_AP_PASSWORD          "focus1234"  // min 8 chars, or "" for an open network
+#define AP_CHECK_MS               5000   // how often to confirm the hotspot is still up
 
-// ---- Wi-Fi client (your home network, for NTP) ----
-#define NTP_SERVER1               "pool.ntp.org"
-#define NTP_SERVER2               "time.nist.gov"
-#define MDNS_HOSTNAME              "focusdock"
-#define STA_CONNECT_TIMEOUT_MS     15000  // give up on a connection attempt after this long
-#define STA_BACKOFF_BASE_MS        5000   // first retry delay after a failed/dropped connection
-#define STA_BACKOFF_MAX_MS         60000  // retry delay never grows past this
-#define CLOCK_CHECK_MS             1000   // how often to re-read the wall clock
+// ---- Menu ----
+#define MENU_VISIBLE_ROWS         3      // how many menu items fit on screen at once
 
 // ---- Loop pacing ----
 #define LOOP_DELAY_MS            10
@@ -106,27 +95,11 @@ Adafruit_NeoPixel strip(NUM_LEDS, PIN_LED_DATA, NEO_GRB + NEO_KHZ800);
 WebServer server(80);
 Preferences prefs;
 
-// ---- timezones: a small curated list of POSIX TZ strings (handles DST) ----
-struct TzOption { const char* label; const char* posix; };
-const TzOption TZ_OPTIONS[] = {
-  {"UTC",                     "UTC0"},
-  {"London (GMT/BST)",        "GMT0BST,M3.5.0/1,M10.5.0"},
-  {"Berlin/Paris (CET/CEST)", "CET-1CEST,M3.5.0,M10.5.0/3"},
-  {"US Eastern (EST/EDT)",    "EST5EDT,M3.2.0,M11.1.0"},
-  {"US Pacific (PST/PDT)",    "PST8PDT,M3.2.0,M11.1.0"},
-};
-const uint8_t TZ_OPTION_COUNT = sizeof(TZ_OPTIONS) / sizeof(TZ_OPTIONS[0]);
-
 // ---- persisted settings (editable from the Wi-Fi page) ----
 struct Settings {
   uint8_t brightness = DEFAULT_LED_BRIGHTNESS;
   uint16_t focusMinutes = DEFAULT_FOCUS_MINUTES;
   bool flipEnabled = true;
-
-  char staSsid[33] = "Vodafone-B711";      // home Wi-Fi SSID, empty = STA disabled
-  char staPassword[65] = "6JLeBktYWcvJeedm";  // home Wi-Fi password
-
-  uint8_t tzIndex = 0;        // index into TZ_OPTIONS[]
 
   uint16_t pomoWorkMin = DEFAULT_POMO_WORK_MIN;
   uint16_t pomoShortBreakMin = DEFAULT_POMO_SHORT_MIN;
@@ -136,11 +109,12 @@ struct Settings {
 Settings settings;
 
 // ---- menu / programs ----
-enum Program { PROGRAM_MENU, PROGRAM_TIMER, PROGRAM_POMODORO, PROGRAM_AVAILABILITY };
+enum Program { PROGRAM_MENU, PROGRAM_TIMER, PROGRAM_POMODORO, PROGRAM_AVAILABILITY, PROGRAM_INFO };
 Program currentProgram = PROGRAM_MENU;
-const char* MENU_ITEMS[] = { "Focus Timer", "Pomodoro", "Available / Busy" };
-const int MENU_COUNT = 3;
+const char* MENU_ITEMS[] = { "Focus Timer", "Pomodoro", "Available / Busy", "Info" };
+const int MENU_COUNT = 4;
 int menuIndex = 0;
+int menuScroll = 0;  // index of the first menu item currently shown on screen
 
 // ---- focus timer state machine ----
 enum TimerState { STATE_SET, STATE_RUNNING, STATE_PAUSED, STATE_DONE };
@@ -182,17 +156,8 @@ unsigned long candidateSinceMs = 0;
 float axFiltered = 0.0f;
 bool imuOk = false;
 
-// ---- Wi-Fi client (home network) state ----
-enum StaState { STA_DISABLED, STA_CONNECTING, STA_CONNECTED, STA_BACKOFF };
-StaState staState = STA_DISABLED;
-uint8_t staAttempt = 0;
-unsigned long staAttemptStartMs = 0;
-unsigned long staNextAttemptMs = 0;
-
-// ---- wall clock (NTP-derived, no hardware RTC) ----
-bool clockValid = false;
-char clockStr[6] = "--:--";
-unsigned long lastClockCheckMs = 0;
+// ---- hotspot watchdog ----
+unsigned long lastApCheckMs = 0;
 
 // ---- debounced button, with long-press detection for the center click ----
 struct Button {
@@ -244,14 +209,6 @@ void loadSettings() {
   settings.focusMinutes = prefs.getUShort("minutes", DEFAULT_FOCUS_MINUTES);
   settings.flipEnabled = prefs.getBool("flip", true);
 
-  String ssid = prefs.getString("staSsid", "");
-  strlcpy(settings.staSsid, ssid.c_str(), sizeof(settings.staSsid));
-  String pass = prefs.getString("staPass", "");
-  strlcpy(settings.staPassword, pass.c_str(), sizeof(settings.staPassword));
-
-  settings.tzIndex = prefs.getUChar("tzIndex", 0);
-  if (settings.tzIndex >= TZ_OPTION_COUNT) settings.tzIndex = 0;
-
   settings.pomoWorkMin = prefs.getUShort("pomoWork", DEFAULT_POMO_WORK_MIN);
   settings.pomoShortBreakMin = prefs.getUShort("pomoShort", DEFAULT_POMO_SHORT_MIN);
   settings.pomoLongBreakMin = prefs.getUShort("pomoLong", DEFAULT_POMO_LONG_MIN);
@@ -264,100 +221,10 @@ void saveSettings() {
   prefs.putUChar("bright", settings.brightness);
   prefs.putUShort("minutes", settings.focusMinutes);
   prefs.putBool("flip", settings.flipEnabled);
-  prefs.putString("staSsid", settings.staSsid);
-  prefs.putString("staPass", settings.staPassword);
-  prefs.putUChar("tzIndex", settings.tzIndex);
   prefs.putUShort("pomoWork", settings.pomoWorkMin);
   prefs.putUShort("pomoShort", settings.pomoShortBreakMin);
   prefs.putUShort("pomoLong", settings.pomoLongBreakMin);
   prefs.putUChar("pomoSessN", settings.pomoSessionsBeforeLong);
-}
-
-// ======================= Wi-Fi client + NTP ==========================
-
-void applyTimezone() {
-  configTzTime(TZ_OPTIONS[settings.tzIndex].posix, NTP_SERVER1, NTP_SERVER2);
-}
-
-void onStaConnected() {
-  Serial.printf("Wi-Fi STA connected, IP %s\n", WiFi.localIP().toString().c_str());
-  applyTimezone();
-}
-
-void staBegin() {
-  if (settings.staSsid[0] == '\0') {
-    staState = STA_DISABLED;
-    return;
-  }
-  Serial.printf("Wi-Fi STA connecting to '%s'...\n", settings.staSsid);
-  WiFi.begin(settings.staSsid, settings.staPassword);
-  staAttemptStartMs = millis();
-  staState = STA_CONNECTING;
-}
-
-void staReset() {
-  WiFi.disconnect(false);
-  staAttempt = 0;
-  staBegin();
-}
-
-unsigned long staBackoffMs() {
-  uint8_t shift = staAttempt < 4 ? staAttempt : 4;
-  unsigned long ms = (unsigned long)STA_BACKOFF_BASE_MS << shift;
-  return ms > STA_BACKOFF_MAX_MS ? STA_BACKOFF_MAX_MS : ms;
-}
-
-// Non-blocking Wi-Fi client state machine - never delay()/while() waits here,
-// so buttons and the display stay responsive through connect/backoff/retry.
-void wifiStaTick() {
-  switch (staState) {
-    case STA_DISABLED:
-      break;
-
-    case STA_CONNECTING:
-      if (WiFi.status() == WL_CONNECTED) {
-        staAttempt = 0;
-        staState = STA_CONNECTED;
-        onStaConnected();
-      } else if (millis() - staAttemptStartMs > STA_CONNECT_TIMEOUT_MS) {
-        WiFi.disconnect();
-        staAttempt++;
-        staNextAttemptMs = millis() + staBackoffMs();
-        staState = STA_BACKOFF;
-        Serial.println("Wi-Fi STA connect timed out, backing off");
-      }
-      break;
-
-    case STA_CONNECTED:
-      if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Wi-Fi STA connection dropped");
-        staNextAttemptMs = millis() + STA_BACKOFF_BASE_MS;
-        staState = STA_BACKOFF;
-      }
-      break;
-
-    case STA_BACKOFF:
-      if (millis() >= staNextAttemptMs) staBegin();
-      break;
-  }
-}
-
-bool isTimeSynced(struct tm& t) {
-  // 5 ms timeout: effectively non-blocking, we only care whether it's synced *now*.
-  return getLocalTime(&t, 5) && (t.tm_year + 1900) >= 2024;
-}
-
-void updateClockCache() {
-  if (millis() - lastClockCheckMs < CLOCK_CHECK_MS) return;
-  lastClockCheckMs = millis();
-  struct tm t;
-  if (isTimeSynced(t)) {
-    clockValid = true;
-    snprintf(clockStr, sizeof(clockStr), "%02d:%02d", t.tm_hour, t.tm_min);
-  } else {
-    clockValid = false;
-    strlcpy(clockStr, "--:--", sizeof(clockStr));
-  }
 }
 
 // ============================= LEDs =================================
@@ -528,6 +395,9 @@ void enterProgram(int index) {
     case 2:
       currentProgram = PROGRAM_AVAILABILITY;
       break;
+    case 3:
+      currentProgram = PROGRAM_INFO;
+      break;
   }
 }
 
@@ -639,6 +509,9 @@ void handleButtons() {
         statusOverride = (statusOverride == OVERRIDE_BUSY) ? OVERRIDE_FREE : OVERRIDE_BUSY;
       }
       break;
+
+    case PROGRAM_INFO:
+      break;  // nothing to interact with - hold=menu handles navigation
   }
 }
 
@@ -688,13 +561,24 @@ void drawCentered(const uint8_t* font, int y, const char* text) {
 void drawMenu() {
   u8g2.setFont(u8g2_font_6x10_tr);
   u8g2.drawStr(0, 10, "Select program");
-  const char* clk = clockValid ? clockStr : "--:--";
-  u8g2.drawStr(128 - u8g2.getStrWidth(clk), 10, clk);
-  for (int i = 0; i < MENU_COUNT; i++) {
+
+  // Keep the selected item inside the visible window, scrolling the minimum
+  // amount needed rather than jumping - menuScroll persists across frames.
+  if (menuIndex < menuScroll) menuScroll = menuIndex;
+  if (menuIndex >= menuScroll + MENU_VISIBLE_ROWS) menuScroll = menuIndex - MENU_VISIBLE_ROWS + 1;
+
+  for (int row = 0; row < MENU_VISIBLE_ROWS; row++) {
+    int i = menuScroll + row;
+    if (i >= MENU_COUNT) break;
     char line[24];
     snprintf(line, sizeof(line), "%s%s", i == menuIndex ? "> " : "  ", MENU_ITEMS[i]);
-    u8g2.drawStr(4, 26 + i * 13, line);
+    u8g2.drawStr(4, 24 + row * 13, line);
   }
+
+  // small arrows hinting there's more above/below the visible window
+  if (menuScroll > 0) u8g2.drawStr(122, 24, "^");
+  if (menuScroll + MENU_VISIBLE_ROWS < MENU_COUNT) u8g2.drawStr(122, 24 + (MENU_VISIBLE_ROWS - 1) * 13, "v");
+
   u8g2.drawStr(0, 62, "up/dn=move click=open");
 }
 
@@ -824,6 +708,24 @@ void drawAvailability() {
   u8g2.drawStr(0, 62, "hold=menu");
 }
 
+void drawInfo() {
+  u8g2.setFont(u8g2_font_6x10_tr);
+  u8g2.drawStr(0, 10, "Info");
+
+  char line[32];
+
+  snprintf(line, sizeof(line), "SSID: %s", WIFI_AP_SSID);
+  u8g2.drawStr(0, 24, line);
+
+  snprintf(line, sizeof(line), "IP:   %s", WiFi.softAPIP().toString().c_str());
+  u8g2.drawStr(0, 36, line);
+
+  snprintf(line, sizeof(line), "MAC:  %s", WiFi.macAddress().c_str());
+  u8g2.drawStr(0, 48, line);
+
+  u8g2.drawStr(0, 62, "hold=menu");
+}
+
 void drawScreen() {
   u8g2.clearBuffer();
   switch (currentProgram) {
@@ -831,6 +733,7 @@ void drawScreen() {
     case PROGRAM_TIMER:        drawTimer();        break;
     case PROGRAM_POMODORO:     drawPomodoro();     break;
     case PROGRAM_AVAILABILITY: drawAvailability(); break;
+    case PROGRAM_INFO:         drawInfo();         break;
   }
   u8g2.sendBuffer();
 }
@@ -856,17 +759,6 @@ String settingsPage(const String& notice) {
           "<input type=number name=minutes min=" + String(TIMER_MIN_MINUTES) + " max=" + String(TIMER_MAX_MINUTES) + " value=" + String(settings.focusMinutes) + ">";
   html += "<label><input type=checkbox name=flip value=1 " + String(settings.flipEnabled ? "checked" : "") + "> Auto-flip display</label>";
   html += "</fieldset>";
-
-  html += "<fieldset><legend>Wi-Fi (home network)</legend>";
-  html += "<label>Network name (SSID)</label><input type=text name=ssid maxlength=32 value=\"" + String(settings.staSsid) + "\">";
-  html += "<label>Password (leave blank to keep the current one)</label><input type=password name=pass maxlength=64 value=\"\">";
-  html += "</fieldset>";
-
-  html += "<fieldset><legend>Timezone</legend><label>Timezone</label><select name=tz>";
-  for (uint8_t i = 0; i < TZ_OPTION_COUNT; i++) {
-    html += "<option value=" + String(i) + (i == settings.tzIndex ? " selected" : "") + ">" + TZ_OPTIONS[i].label + "</option>";
-  }
-  html += "</select></fieldset>";
 
   html += "<fieldset><legend>Pomodoro</legend>";
   html += "<label>Work minutes (" + String(POMO_MIN_MINUTES) + "-" + String(POMO_MAX_MINUTES) + ")</label>"
@@ -896,28 +788,6 @@ void handleSave() {
   }
   settings.flipEnabled = server.hasArg("flip");
 
-  bool wifiChanged = false;
-  if (server.hasArg("ssid")) {
-    String ssid = server.arg("ssid");
-    if (strcmp(ssid.c_str(), settings.staSsid) != 0) {
-      strlcpy(settings.staSsid, ssid.c_str(), sizeof(settings.staSsid));
-      wifiChanged = true;
-    }
-  }
-  if (server.hasArg("pass") && server.arg("pass").length() > 0) {
-    strlcpy(settings.staPassword, server.arg("pass").c_str(), sizeof(settings.staPassword));
-    wifiChanged = true;
-  }
-
-  bool tzChanged = false;
-  if (server.hasArg("tz")) {
-    long v = constrain(server.arg("tz").toInt(), 0, TZ_OPTION_COUNT - 1);
-    if ((uint8_t)v != settings.tzIndex) {
-      settings.tzIndex = (uint8_t)v;
-      tzChanged = true;
-    }
-  }
-
   if (server.hasArg("pomoWork")) {
     settings.pomoWorkMin = (uint16_t)constrain(server.arg("pomoWork").toInt(), POMO_MIN_MINUTES, POMO_MAX_MINUTES);
   }
@@ -941,22 +811,32 @@ void handleSave() {
     u8g2.setDisplayRotation(U8G2_R0);
   }
 
-  if (wifiChanged) staReset();
-  if (tzChanged) applyTimezone();
-
-  String notice = "Saved.";
-  if (wifiChanged) notice += " Reconnecting Wi-Fi...";
-  server.send(200, "text/html", settingsPage(notice));
+  server.send(200, "text/html", settingsPage("Saved."));
 }
 
 void startWifiPortal() {
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_AP);
   WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
   server.on("/", HTTP_GET, handleRoot);
   server.on("/save", HTTP_POST, handleSave);
   server.begin();
   Serial.printf("Wi-Fi hotspot '%s' up, settings at http://%s\n",
                 WIFI_AP_SSID, WiFi.softAPIP().toString().c_str());
+}
+
+// The settings hotspot must always be reachable. Periodically confirm it's
+// still up and bring it back if anything ever knocked it down.
+void ensureApOn() {
+  if (millis() - lastApCheckMs < AP_CHECK_MS) return;
+  lastApCheckMs = millis();
+
+  bool apModeSet = (WiFi.getMode() & WIFI_MODE_AP) != 0;
+  bool apHasIp = WiFi.softAPIP() != IPAddress(0, 0, 0, 0);
+  if (!apModeSet || !apHasIp) {
+    Serial.println("Hotspot was down - restarting it");
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+  }
 }
 
 // ============================ setup/loop ============================
@@ -986,14 +866,6 @@ void setup() {
   }
 
   startWifiPortal();
-  staBegin();  // no-op (STA_DISABLED) if no home Wi-Fi has been configured yet
-
-  if (MDNS.begin(MDNS_HOSTNAME)) {
-    MDNS.addService("http", "tcp", 80);
-    Serial.printf("mDNS responder started: http://%s.local\n", MDNS_HOSTNAME);
-  } else {
-    Serial.println("mDNS start failed");
-  }
 }
 
 void loop() {
@@ -1001,8 +873,7 @@ void loop() {
   tickTimer();
   tickPomodoro();
   readOrientation();
-  wifiStaTick();
-  updateClockCache();
+  ensureApOn();
   updateLeds();
   server.handleClient();
 

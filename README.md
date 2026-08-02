@@ -19,14 +19,10 @@ tells you (and everyone walking by) what's going on:
   of a docked phone is on the [roadmap](#roadmap).)
 - **Mounts either way up** — clip it to the top or bottom monitor edge; the
   screen flips itself the right way up automatically.
-- **Clock** — once the device joins your home Wi-Fi, it syncs the time over
-  NTP and shows it on the menu screen. No hardware clock battery — if it
-  can't reach the internet at boot, it shows `--:--` until it can (every
-  countdown timer keeps working regardless).
 - **Settings over Wi-Fi** — the device always broadcasts its own Wi-Fi
-  hotspot for settings access, and can also join your home Wi-Fi to fetch the
-  time and let you reach the settings page at a friendly local address. No
-  app to install.
+  hotspot, no internet or home network required. Join it and open a simple
+  web page to change brightness, timer/Pomodoro durations, and more. No app
+  to install. (No real-time clock yet — see [roadmap](#roadmap).)
 
 ## The prototype today
 
@@ -35,8 +31,8 @@ Everything below is running on a breadboard right now:
 ![Breadboard prototype](docs/breadboard.jpeg)
 
 **Working:** display, motion sensor, auto-flip, LED strip, the menu, focus
-timer, Pomodoro, manual status override, Wi-Fi client + NTP clock, and the
-Wi-Fi settings page.
+timer, Pomodoro, manual status override, and the Wi-Fi hotspot + settings
+page.
 **Not built yet:** phone-presence sensing, enclosure, proper 5V LED power —
 see the [roadmap](#roadmap).
 
@@ -56,15 +52,14 @@ When a focus session hits zero the LEDs blink green and the screen shows
 briefly blinks the next phase's color between phases, then auto-continues —
 press any button to skip the wait.
 
-**Connecting to your home Wi-Fi:** on your phone, join the Wi-Fi network
-**FocusDock** (password `focus1234`), then open **http://192.168.4.1** in a
-browser. Fill in your home network's name and password under "Wi-Fi (home
-network)", pick your timezone, adjust brightness/timer/Pomodoro settings as
-you like, and press Save. The device keeps its own FocusDock hotspot running
-the whole time, and also tries to join your home network in the background —
-once it's joined, the same settings page is reachable at
-**http://focusdock.local** from any device on that network. All settings
-persist across power-off.
+A fourth menu item, **Info**, shows the hotspot's name, IP address, and the
+device's MAC address — handy for troubleshooting the Wi-Fi connection.
+
+**Changing settings:** on your phone, join the Wi-Fi network **FocusDock**
+(password `focus1234`), then open **http://192.168.4.1** in a browser.
+Change brightness, default timer length, Pomodoro durations, and auto-flip,
+press Save — settings persist across power-off. The hotspot is always on, no
+internet or home network needed.
 
 ## What's inside
 
@@ -158,7 +153,7 @@ What it takes to go from breadboard to a product with a long life:
 **Firmware**
 - [ ] Dock/undock actions (auto-start focus session when phone is docked)
 - [x] Colors and more settings editable from the Wi-Fi page
-- [x] Wi-Fi client mode + NTP so the menu screen can show a clock
+- [ ] Wi-Fi client mode + NTP so the menu screen can show a clock
 - [ ] Calendar integration (busy light follows your meetings automatically)
 - [ ] Optional buzzer/chime when the session ends
 - [ ] Over-the-air firmware updates (no cable needed)
