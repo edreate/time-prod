@@ -26,6 +26,7 @@
 PIO  ?= python3 -m platformio
 PORT ?= /dev/cu.usbmodem1101
 ENV  ?= esp32-s3
+MON_PORT ?= /dev/cu.usbmodem59700474361
 
 .PHONY: setup build upload monitor flash clean ports
 
@@ -43,7 +44,7 @@ upload: .setup-stamp
 	$(PIO) run -e $(ENV) -t upload --upload-port $(PORT)
 
 monitor: .setup-stamp
-	$(PIO) device monitor -p $(PORT) -b 115200
+	$(PIO) device monitor -p $(MON_PORT) -b 115200
 
 flash: upload monitor
 
