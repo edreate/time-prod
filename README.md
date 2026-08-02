@@ -1,128 +1,153 @@
-# Focus & Availability Device
+# FocusDock — Focus & Availability Device
 
-A small device that can be kept on a table where phone can be docked or clips onto the top or bottom edge of your monitor (oreintation changable). It helps you protect your focus time - set a timer, show your availability to the team, and park your phone. One device that keeps you on task and tells others not to interrupt.
+A small desk gadget that protects your focus time. It sits on your desk as a
+phone dock, or clips onto the top or bottom edge of your monitor. One glance
+tells you (and everyone walking by) what's going on:
 
-## Features
+- **Focus timer** — press up/down to pick the minutes, click to start. The
+  screen counts down.
+- **Status light** — LEDs glow **green** (free), **amber** (busy / in a
+  meeting), or **red** (focusing — do not disturb). The color follows the
+  timer automatically, or you can set it yourself with one click: an instant
+  meeting indicator.
+- **Phone dock** — park your phone on it and out of your hands. (Auto-detect
+  of a docked phone is on the [roadmap](#roadmap).)
+- **Mounts either way up** — clip it to the top or bottom monitor edge; the
+  screen flips itself the right way up automatically.
+- **Settings over Wi-Fi** — the device broadcasts its own Wi-Fi hotspot. Join
+  it from your phone and open a simple web page to change brightness, default
+  timer length, and more. No app to install.
 
-- **Focus timer** - Turn the knob to set a session, click to start. The screen shows the countdown.
-- **Status light** - LEDs around the edge glow red, yellow, or green so colleagues can see your availability at a glance.
-- **Phone dock** - Rest your phone on the ledge. Docking can auto-trigger actions like starting a focus session or changing your status.
-- **Clips top or bottom** - Mounts on either edge of the monitor. The display flips automatically based on orientation.
+## The prototype today
 
-## Tech
+Everything below is running on a breadboard right now:
 
-- **ESP32** - main controller, with Wi-Fi and Bluetooth for future integrations
-- **Front-facing display** - timer and UI
-- **WS2812B addressable RGB LEDs** - status lighting
-- **Rotary encoder with push button** - twist to set, click to confirm
-- **IMU** - detects mounting orientation, auto-flips the UI
-- **Presence sensor** (IR, light, or pressure) - detects when a phone is docked
+![Breadboard prototype](docs/breadboard.jpeg)
 
+**Working:** display, motion sensor, auto-flip, LED strip, the focus timer,
+manual status override, and the Wi-Fi settings page.
+**Not built yet:** phone-presence sensing, enclosure, proper 5V LED power —
+see the [roadmap](#roadmap).
 
-# Work in Progess:
-## BOM / Actual Tech (work in progress)
+## How to use it
 
-The parts we're actually looking at. Prices are the current discounted price from the links below (EUR, may change).
+The 5-way button does everything:
 
-| Part | What it's for | ~Price | Status |
+| Button | When idle | While running | While paused |
 |---|---|---|---|
-| ESP32 board | Main controller | €14.49 | Picked - see link |
-| WS2812B LED strip | Status light | €3.89 | Picked - see link |
-| IMU | Detects flip / orientation | €4.79-5.39 | 3 options - pick one |
-| Display | Timer + UI screen | €7.19 (?) | **To confirm** - see links |
-| Rotary encoder + knob | Set and confirm timer | - | TBD |
-| Presence sensor | Detect docked phone | - | TBD |
-| USB-C power breakout | 5V power in | - | TBD |
-| Support parts | Level shifter, resistor, cap, diode | - | TBD (see notes) |
+| **Up / Down** | Set the minutes (±5) | — | Down = cancel session |
+| **Click** (center) | Start the timer | Pause | Resume |
+| **Left / Right** | Cycle the status light: auto → free → busy → focus → auto (works anytime) |
 
-## Links
+When the timer hits zero the LEDs blink green and the screen shows *Done!* —
+click to dismiss (or it clears itself after a minute).
 
-Click to open each product in a new tab.
+**Changing settings:** on your phone, join the Wi-Fi network **FocusDock**
+(password `focus1234`), then open **http://192.168.4.1** in a browser. Change
+what you like, press Save — settings persist across power-off.
 
-**ESP32 board**
-<ul>
-<li><a href="https://de.aliexpress.com/item/1005006935181127.html" target="_blank" rel="noopener">ESP32 board - €14.49</a></li>
-</ul>
+## What's inside
 
-**LED strip (WS2812B)**
-<ul>
-<li><a href="https://de.aliexpress.com/item/2036819167.html" target="_blank" rel="noopener">WS2812B RGB LED strip - €3.89</a></li>
-</ul>
-
-**IMU (pick one)**
-<ul>
-<li><a href="https://de.aliexpress.com/item/1005008796700745.html" target="_blank" rel="noopener">IMU option 1 - €5.09</a></li>
-<li><a href="https://de.aliexpress.com/item/1005007530430125.html" target="_blank" rel="noopener">IMU option 2 - €4.79</a></li>
-<li><a href="https://de.aliexpress.com/item/1005008610645902.html" target="_blank" rel="noopener">IMU option 3 - €5.39</a></li>
-</ul>
-
-**Display**
-<ul>
-<li><a href="https://de.aliexpress.com/item/1005012056606318.html" target="_blank" rel="noopener">Display A 1.3 inch 128x64 - €7.19</a></li>
-<li><a href="https://de.aliexpress.com/item/1005011653680962.html" target="_blank" rel="noopener">Display B 1.3 inch 128x64 - €10.99</a></li>
-</ul>
-
-**Others** - TBD
-
-## Notes
-
-### Power
-- WS2812B pulls **60mA per LED** at full white. A status color at normal brightness is more like **8-10mA**.
-- Plan for **20-30 LEDs** on a **5V/3A USB-C supply** - a full ring, plenty bright.
-- Use a software brightness cap so it can never draw too much and brown out.
-
-### Support parts still needed
-These make the circuit work properly:
-- **74AHCT125 level shifter** - the ESP32 runs at 3.3V but the LEDs need 5V data. This chip fixes that.
-- **1000µF capacitor** across LED power - stops power spikes that can kill the first LED.
-- **330-470Ω resistor** on the LED data line.
-- **Schottky diode (SS34)** on VIN - protects the board when the programming USB and the 5V supply are both plugged in.
-
-## Firmware
-
-Two test builds so far, selected via PlatformIO's `-e <environment>` (see [platformio.ini](platformio.ini)). Both assume the wiring in [Req-Design.md](Req-Design.md). Built with [PlatformIO](https://platformio.org/).
-
-| `ENV` | Source | What it does |
+| Part | Job | ~Price |
 |---|---|---|
-| `esp32-s3` (default) | `src/main.cpp` | I2C scan + display + IMU bring-up test |
-| `esp32-s3-orientation` | `src/test_orientation.cpp` | Flips the display 180° based on IMU accel (see note below) |
+| ESP32-S3 board (WROOM-1 N16R8) | The brain — runs everything, provides Wi-Fi | €14.49 |
+| 1.3" OLED display (128×64, I2C) | Timer and menus | €7.19 |
+| BMI160 motion sensor | Detects which way up it's mounted | ~€5 |
+| WS2812B LED strip | The status light | €3.89 |
+| 5-way button (5DirKey) | All input | ~€1 |
 
-### Flashing
+Full wiring instructions, circuit diagram, and part gotchas:
+**[docs/HARDWARE.md](docs/HARDWARE.md)**.
+New to electronics? Every concept this project uses, explained briefly:
+**[docs/ELECTRONICS.md](docs/ELECTRONICS.md)**.
 
-1. Install PlatformIO Core once: `pip3 install -U platformio`
-   - If `pio: command not found` afterward, it installed to a user bin not on your `PATH` (macOS pip does this). Either add it: `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`, or run everything below as `python3 -m platformio ...` instead of `pio ...`.
-2. Plug in the board and find its port:
+## Build & flash the firmware
+
+You need [Python 3](https://www.python.org/downloads/) and a USB-C cable.
+Everything else installs itself.
+
+1. **Plug in the board** and find its port:
    ```
-   ls /dev/cu.*
+   make ports
    ```
-   It's one of the `usbmodem*` entries, not `Bluetooth-Incoming-Port` or `debug-console`. The board exposes two USB-C ports - if one doesn't respond, try the other. Note: macOS can reassign this name across reconnects/reboots, so re-check it if uploads suddenly can't find the port.
-3. Build and flash with the `Makefile` (`PORT` defaults to the last-confirmed-working port on this board - override if yours differs; `ENV` defaults to `esp32-s3`, override to flash the orientation test):
+   Yours is one of the `usbmodem*` entries (not `Bluetooth-Incoming-Port` or
+   `debug-console`). The board has two USB-C ports — if one doesn't respond,
+   try the other. macOS can rename the port across reconnects, so re-check if
+   an upload suddenly can't find it.
+
+2. **Flash:**
    ```
    make flash PORT=/dev/cu.usbmodemXXXX
-   make flash PORT=/dev/cu.usbmodemXXXX ENV=esp32-s3-orientation
    ```
-   This uploads then opens the serial monitor. First run installs PlatformIO and pulls the toolchain/libraries automatically (`setup`, ~2 min one-time cost) - every target depends on it, so you don't need to run it separately. Other targets: `make build`, `make upload`, `make monitor`, `make ports` (lists connected devices), `make clean`.
+   The first run installs PlatformIO and downloads the toolchain (~2 min,
+   one-time). It then uploads the firmware and opens the serial monitor so you
+   can watch the device's log output. `Ctrl+C` exits the monitor.
 
-   Equivalent raw PlatformIO commands, if you'd rather skip the Makefile:
-   ```
-   pio run -e esp32-s3-orientation -t upload --upload-port /dev/cu.usbmodemXXXX
-   pio device monitor -p /dev/cu.usbmodemXXXX -b 115200
-   ```
+Other targets: `make build`, `make upload`, `make monitor`, `make clean`.
 
-   Command last used to flash `test_orientation.cpp` (port will likely differ for you - see step 2):
-   ```
-   make upload ENV=esp32-s3-orientation PORT=/dev/cu.usbmodem1101
-   ```
+**If upload hangs at "Connecting..."**: hold **BOOT**, tap **RESET**, release
+**BOOT**, retry. If it fails partway with a checksum error, that's a flaky USB
+connection — reseat the cable and retry.
 
-If upload hangs at "Connecting...", hold **BOOT**, tap **RESET**, release **BOOT**, then retry. If it fails partway through with an `esptool` checksum error, that's a flaky USB connection, not a firmware bug - retry, or reseat the cable.
+### Test firmwares
 
-### Orientation detection (`esp32-s3-orientation`)
+Besides the main firmware there are three small test builds for checking the
+hardware piece by piece — useful after wiring changes:
 
-The device only clips in two valid positions (top or bottom edge of the monitor), not continuous tilt, so this is a two-state classifier, not full attitude estimation - a single accel axis is enough:
+| `ENV` | What it checks |
+|---|---|
+| `esp32-s3` *(default)* | The real firmware — everything |
+| `test-bringup` | I2C scan + display + IMU readout: is everything wired and answering? |
+| `test-orientation` | Just the display auto-flip |
+| `test-orientation-led` | Auto-flip + LED color change |
 
-- **Axis & threshold**: `ax` (accel X) measured ~+1g mounted vertically in normal orientation, ~-1g flipped. Threshold is set at ±0.5g.
-- **Hysteresis**: the dead zone between -0.5g and +0.5g means noise near the crossover doesn't flicker the display - only a reading clearly past the threshold moves the state.
-- **Debounce**: a reading has to stay past the threshold for 350ms before the flip commits, so a bump or mid-handling tilt doesn't trigger a false flip.
-- **Smoothing**: raw accel is exponentially smoothed (`EMA_ALPHA = 0.2`) before thresholding to cut sensor noise.
+Flash one with e.g. `make flash ENV=test-bringup PORT=...`.
 
-If the IMU's mounting inside the enclosure changes, re-measure `ax` in both orientations and adjust `FLIP_THRESHOLD` / the axis used in `src/test_orientation.cpp` accordingly.
+## Tweaking the firmware
+
+Every tunable number lives in one clearly-marked **CONFIG block** at the top
+of [`src/main.cpp`](src/main.cpp): pin assignments, colors, timer defaults,
+thresholds, Wi-Fi name/password. Change a value, `make flash`, done.
+
+Project layout:
+
+```
+src/main.cpp        the firmware (CONFIG block on top)
+src/test_*.cpp      hardware test builds
+platformio.ini      build configuration (one env per firmware)
+Makefile            build/upload/monitor shortcuts
+docs/HARDWARE.md    parts, wiring, circuit diagram
+docs/ELECTRONICS.md electronics concepts, briefly explained
+```
+
+## Roadmap
+
+What it takes to go from breadboard to a product with a long life:
+
+**Hardware**
+- [ ] Move LED strip to proper 5V power + 74AHCT125 level shifter + 1000 µF cap
+- [ ] Presence sensor for the phone dock (IR / light / pressure — pick one)
+- [ ] USB-C power breakout with Schottky diode (safe dual-power)
+- [ ] Scale to the full 20-30 LED ring on a 5V/3A supply
+- [ ] Enclosure + monitor clip design (3D-printed first)
+- [ ] Evaluate rotary encoder vs. 5-way button for the final feel
+- [ ] Custom PCB once the design settles
+
+**Firmware**
+- [ ] Dock/undock actions (auto-start focus session when phone is docked)
+- [ ] Colors and more settings editable from the Wi-Fi page
+- [ ] Wi-Fi client mode + NTP so the idle screen can show a clock
+- [ ] Calendar integration (busy light follows your meetings automatically)
+- [ ] Optional buzzer/chime when the session ends
+- [ ] Over-the-air firmware updates (no cable needed)
+- [ ] MQTT / Home Assistant integration
+- [ ] Factory-reset gesture (e.g. hold click 10 s)
+
+**Product**
+- [ ] Session stats (focus minutes per day/week)
+- [ ] Battery option + deep sleep for cable-free desks
+- [ ] User-test with non-technical people; simplify anything they stumble on
+
+## License
+
+See [LICENSE](LICENSE).

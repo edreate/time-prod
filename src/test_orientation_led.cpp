@@ -17,7 +17,7 @@
 // this if the IMU's orientation inside the enclosure changes.
 //
 // LED strip is currently powered from the 3.3V rail (out of spec for
-// WS2812B, which wants 5V) - see Req-Design.md power note. Colors may read
+// WS2812B, which wants 5V) - see docs/HARDWARE.md power note. Colors may read
 // dim/off; that's the 3.3V supply, not this code. Cyan/magenta were picked
 // instead of red/green/yellow so this test can't be confused with the
 // separate availability-status LED feature.
