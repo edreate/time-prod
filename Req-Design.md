@@ -30,15 +30,15 @@ Shared rails: ESP32 `3V3` -> breadboard + rail (logic power). ESP32 `5Vin` -> se
 | | OCS | unconnected (aux-interface chip select, unused — if I2C is flaky, try tying this high or low, floating aux pins are a known culprit) |
 | | INT1 / INT2 | unconnected (only needed for interrupt-driven orientation detection instead of polling) |
 | | SCX / SDX | unconnected (aux I2C interface, for chaining a magnetometer — not used) |
-| LED strip | 5V | 5V rail (from `5Vin`) |
+| LED strip | 5V/VDD | **3.3V rail (currently testing)** — out of spec, see power note below; move to `5Vin` if colors look dim/wrong |
 | | GND | GND rail |
-| | DIN | ESP32 data GPIO -> 330-470Ω resistor -> strip DIN (no level shifter for prototype, see note) |
+| | DIN | ESP32 GPIO16 -> 330-470Ω resistor (now wired in) -> strip DIN (no level shifter for prototype, see note) |
 | Button (5DirKey) | Up/Down/Left/Right/Press | 5x ESP32 GPIO, each `INPUT_PULLUP` (unverified) |
 | | common | GND rail |
 
 ## Power note
 
-WS2812B is spec'd DC5V — do not run it at 3.3V, drivers will be starved and colors will be wrong, not just dim. Prototype is ≤10 LEDs, so the ESP32-S3 board's `5Vin` pin (USB VBUS passthrough) is enough — no separate supply needed yet. Move to a dedicated 5V/3A supply only when scaling to the full 20-30 LED ring.
+WS2812B is spec'd DC5V — running it at 3.3V is out of spec, drivers will be starved and colors will be wrong, not just dim (blue/green channels need the most headroom and fade/shift first). **Currently being tested at 3.3V anyway** for convenience during bring-up — if colors look dim, wrong, or a pixel drops out, that's the likely cause; switch to the `5Vin` rail to confirm. One upside of 3.3V: it removes the data-line level-shifting concern entirely, since VDD now matches the ESP32's 3.3V logic — the marginal-at-5V data signal issue only existed because VDD (5V) and logic (3.3V) didn't match. Prototype is ≤10 LEDs, so `5Vin` (USB VBUS passthrough) is enough when you do move to 5V — no separate supply needed yet. Move to a dedicated 5V/3A supply only when scaling to the full 20-30 LED ring.
 
 ## Decisions locked for prototype
 
