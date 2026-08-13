@@ -4,25 +4,17 @@ A small desk gadget that protects your focus time. It sits on your desk as a
 phone dock, or clips onto the top or bottom edge of your monitor. One glance
 tells you (and everyone walking by) what's going on:
 
-- **Menu** — click cycles between Focus Timer, Pomodoro, and Available/Busy.
-  Long-press the center click, from anywhere, to jump back to the menu.
+- **Menu** — pick a program: Focus Timer or Available/Busy. Long-press the
+  center click, from anywhere, to jump back to the menu.
 - **Focus timer** — set an H:M:S duration, click to start. The screen counts
-  down.
-- **Pomodoro** — classic work / short break / work / ... / long break cycle,
-  auto-advancing between phases. Durations and session count are configurable
-  from the Wi-Fi settings page and persist across power-off.
-- **Status light** — LEDs glow **green** (free), **amber** (busy / paused),
-  **red** (focusing / do not disturb), or **blue** (pomodoro long break). The
-  color follows whatever's running automatically, or you can set it yourself
-  with one click: an instant meeting indicator.
+  down and the LEDs empty out like a progress bar.
+- **Status light** — LEDs glow **green** (free), **red** (busy), or **amber**
+  (timer running). One click toggles available/busy: an instant meeting
+  indicator.
 - **Phone dock** — park your phone on it and out of your hands. (Auto-detect
   of a docked phone is on the [roadmap](#roadmap).)
 - **Mounts either way up** — clip it to the top or bottom monitor edge; the
   screen flips itself the right way up automatically.
-- **Settings over Wi-Fi** — the device always broadcasts its own Wi-Fi
-  hotspot, no internet or home network required. Join it and open a simple
-  web page to change brightness, timer/Pomodoro durations, and more. No app
-  to install. (No real-time clock yet — see [roadmap](#roadmap).)
 
 ## The prototype today
 
@@ -31,35 +23,23 @@ Everything below is running on a breadboard right now:
 ![Breadboard prototype](docs/breadboard.jpeg)
 
 **Working:** display, motion sensor, auto-flip, LED strip, the menu, focus
-timer, Pomodoro, manual status override, and the Wi-Fi hotspot + settings
-page.
-**Not built yet:** phone-presence sensing, enclosure, proper 5V LED power —
-see the [roadmap](#roadmap).
+timer, and the available/busy status light.
+**Not built yet:** Pomodoro, Wi-Fi settings, phone-presence sensing,
+enclosure, proper 5V LED power — see the [roadmap](#roadmap).
 
 ## How to use it
 
 The 5-way button does everything:
 
-| Button | Menu | Setting the timer | Timer running/paused | Pomodoro | Availability |
-|---|---|---|---|---|---|
-| **Up / Down** | Move cursor | Change selected field | — | — | — |
-| **Left / Right** | Select field | Down = cancel (paused) | Cycle status light (works almost anywhere) |
-| **Click** (center) | Open program | Start | Pause / resume | Start / pause / resume | Toggle available/busy |
-| **Hold click** | — | Return to menu, from any screen |
+| Button | Menu | Setting the timer | Timer running/paused | Availability |
+|---|---|---|---|---|
+| **Up / Down** | Move cursor | Change selected field | Down = cancel (paused) | — |
+| **Left / Right** | — | Select H / M / S field | — | — |
+| **Click** (center) | Open program | Start | Pause / resume | Toggle available/busy |
+| **Hold click** | — | Return to menu, from any screen | | |
 
 When a focus session hits zero the LEDs blink green and the screen shows
-*Done!* — click to dismiss (or it clears itself after a minute). Pomodoro
-briefly blinks the next phase's color between phases, then auto-continues —
-press any button to skip the wait.
-
-A fourth menu item, **Info**, shows the hotspot's name, IP address, and the
-device's MAC address — handy for troubleshooting the Wi-Fi connection.
-
-**Changing settings:** on your phone, join the Wi-Fi network **FocusDock**
-(password `focus1234`), then open **http://192.168.4.1** in a browser.
-Change brightness, default timer length, Pomodoro durations, and auto-flip,
-press Save — settings persist across power-off. The hotspot is always on, no
-internet or home network needed.
+*Done!* — press any button to dismiss.
 
 ## What's inside
 
@@ -106,31 +86,27 @@ connection — reseat the cable and retry.
 
 ### Test firmwares
 
-Besides the main firmware there are three small test builds for checking the
-hardware piece by piece — useful after wiring changes:
+Besides the main firmware there's a small test build for checking the
+hardware — useful after wiring changes:
 
 | `ENV` | What it checks |
 |---|---|
-| `esp32-s3` *(default)* | The real firmware — everything |
+| `time-prod-app` *(default)* | The real firmware — everything |
 | `test-bringup` | I2C scan + display + IMU readout: is everything wired and answering? |
-| `test-orientation` | Just the display auto-flip |
-| `test-orientation-led` | Auto-flip + LED color change |
-| `test-button-timer` | Button-set H:M:S timer + 10-LED countdown progress bar |
-| `test-program-menu` | Menu (Timer / Available-Busy) + IMU auto-flip, F/B/L/R button mapping |
 
-Flash one with e.g. `make flash ENV=test-bringup PORT=...`.
+Flash it with `make flash ENV=test-bringup PORT=...`.
 
 ## Tweaking the firmware
 
 Every tunable number lives in one clearly-marked **CONFIG block** at the top
 of [`src/main.cpp`](src/main.cpp): pin assignments, colors, timer defaults,
-thresholds, Wi-Fi name/password. Change a value, `make flash`, done.
+thresholds. Change a value, `make flash`, done.
 
 Project layout:
 
 ```
 src/main.cpp        the firmware (CONFIG block on top)
-src/test_*.cpp      hardware test builds
+src/test_bringup.cpp  hardware bring-up test build
 platformio.ini      build configuration (one env per firmware)
 Makefile            build/upload/monitor shortcuts
 docs/HARDWARE.md    parts, wiring, circuit diagram
@@ -152,7 +128,8 @@ What it takes to go from breadboard to a product with a long life:
 
 **Firmware**
 - [ ] Dock/undock actions (auto-start focus session when phone is docked)
-- [x] Colors and more settings editable from the Wi-Fi page
+- [ ] Pomodoro program (work / short break / long break, auto-cycling)
+- [ ] Settings page over the device's own Wi-Fi hotspot, saved across power-off
 - [ ] Wi-Fi client mode + NTP so the menu screen can show a clock
 - [ ] Calendar integration (busy light follows your meetings automatically)
 - [ ] Optional buzzer/chime when the session ends

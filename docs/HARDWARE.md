@@ -97,7 +97,7 @@ Pin numbers are defined once at the top of [`src/main.cpp`](../src/main.cpp)
   our capped brightness is more like **8-10 mA**. The ≤10-LED prototype is fine
   on USB power. The full 20-30 LED ring needs a **5V/3A supply**, the level
   shifter, and a **1000 µF capacitor** across the strip's power pins.
-- Firmware caps brightness in software (`DEFAULT_LED_BRIGHTNESS` in the CONFIG
+- Firmware caps brightness in software (`LED_BRIGHTNESS` in the CONFIG
   block) so the strip can never draw enough to brown out the board.
 
 ## Decisions locked for the prototype
