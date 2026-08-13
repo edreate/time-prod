@@ -101,20 +101,26 @@ Flash it with `make flash ENV=test-peripherals PORT=...`.
 Every tunable number lives in [`src/config.h`](src/config.h): pin assignments,
 colors, timer defaults, thresholds. Change a value, `make flash`, done.
 
-Each piece of hardware sits behind a small header-only module in `src/hw/`, so
-`main.cpp` holds only the app: it asks for button events and an orientation and
-says what to display. Adding a sensor means adding one header there and two
-lines in `main.cpp` — no build config to touch.
+The code is split two ways: one header per **peripheral** in `src/hardware/`,
+one header per **program** in `src/software/`. `main.cpp` is just the shell —
+it owns no hardware and no program state, it routes button events to whichever
+program is open and asks it to render.
+
+Adding a sensor is one header in `src/hardware/`; adding a program is one
+header in `src/software/` plus a menu row. No build config to touch either way.
 
 Project layout:
 
 ```
-src/config.h        every tunable (pins, colors, thresholds)
-src/hw/display.h    OLED panel
-src/hw/leds.h       WS2812B status light
-src/hw/imu.h        accelerometer -> screen orientation
-src/hw/buttons.h    5-way switch, debounced
-src/main.cpp        the app: state machine, screens, loop
+src/config.h              every tunable (pins, colors, thresholds)
+src/hardware/display.h    OLED panel
+src/hardware/leds.h       WS2812B status light
+src/hardware/imu.h        accelerometer -> screen orientation
+src/hardware/buttons.h    5-way switch, debounced
+src/software/timer.h      focus timer program
+src/software/pomodoro.h   pomodoro program
+src/software/availability.h  available / busy program
+src/main.cpp              the shell: menu, dispatch, loop
 src/test_peripherals.cpp  peripheral check test build
 platformio.ini      build configuration (one env per firmware)
 Makefile            build/upload/monitor shortcuts
