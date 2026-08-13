@@ -23,9 +23,9 @@ Everything below is running on a breadboard right now:
 ![Breadboard prototype](docs/breadboard.jpeg)
 
 **Working:** display, motion sensor, auto-flip, LED strip, the menu, focus
-timer, and the available/busy status light.
-**Not built yet:** Pomodoro, Wi-Fi settings, phone-presence sensing,
-enclosure, proper 5V LED power — see the [roadmap](#roadmap).
+timer, pomodoro, and the available/busy status light.
+**Not built yet:** Wi-Fi settings, phone-presence sensing, enclosure,
+proper 5V LED power — see the [roadmap](#roadmap).
 
 ## How to use it
 
@@ -98,14 +98,23 @@ Flash it with `make flash ENV=test-peripherals PORT=...`.
 
 ## Tweaking the firmware
 
-Every tunable number lives in one clearly-marked **CONFIG block** at the top
-of [`src/main.cpp`](src/main.cpp): pin assignments, colors, timer defaults,
-thresholds. Change a value, `make flash`, done.
+Every tunable number lives in [`src/config.h`](src/config.h): pin assignments,
+colors, timer defaults, thresholds. Change a value, `make flash`, done.
+
+Each piece of hardware sits behind a small header-only module in `src/hw/`, so
+`main.cpp` holds only the app: it asks for button events and an orientation and
+says what to display. Adding a sensor means adding one header there and two
+lines in `main.cpp` — no build config to touch.
 
 Project layout:
 
 ```
-src/main.cpp        the firmware (CONFIG block on top)
+src/config.h        every tunable (pins, colors, thresholds)
+src/hw/display.h    OLED panel
+src/hw/leds.h       WS2812B status light
+src/hw/imu.h        accelerometer -> screen orientation
+src/hw/buttons.h    5-way switch, debounced
+src/main.cpp        the app: state machine, screens, loop
 src/test_peripherals.cpp  peripheral check test build
 platformio.ini      build configuration (one env per firmware)
 Makefile            build/upload/monitor shortcuts
@@ -128,8 +137,9 @@ What it takes to go from breadboard to a product with a long life:
 
 **Firmware**
 - [ ] Dock/undock actions (auto-start focus session when phone is docked)
-- [ ] Pomodoro program (work / short break / long break, auto-cycling)
+- [x] Pomodoro program (work / short break / long break, auto-cycling)
 - [ ] Settings page over the device's own Wi-Fi hotspot, saved across power-off
+      (would also bring back the Info screen: SSID / IP / MAC)
 - [ ] Wi-Fi client mode + NTP so the menu screen can show a clock
 - [ ] Calendar integration (busy light follows your meetings automatically)
 - [ ] Optional buzzer/chime when the session ends

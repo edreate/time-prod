@@ -1,20 +1,8 @@
-// FocusDock - main firmware.
+// FocusDock - main firmware: the app state machine and the screens.
 //
-// A small menu of programs, selected and driven by the 5-way button, with
-// IMU auto-flip running underneath at all times.
-//
-// Button mapping - IMPORTANT:
-//   The 5-way module's silkscreen reads F/B/L/R, but that does not match
-//   the on-screen Up/Down/Left/Right the UI needs (the module sits rotated
-//   in the enclosure relative to the display). The physical-to-logical
-//   mapping is fixed at the wires, not runtime-dependent on the IMU flip:
-//     physical F -> logical LEFT
-//     physical B -> logical RIGHT
-//     physical L -> logical DOWN
-//     physical R -> logical UP
-//   All button logic below is written in terms of logical
-//   left/right/up/down/press, computed once per loop from the physical
-//   pins - see the top of handleButtons().
+// All hardware lives behind the small modules in src/hw/ - this file asks for
+// button events and an orientation, and tells the display and LEDs what to
+// show. It never touches a driver library.
 //
 // Navigation:
 //   Menu          Up/Down move the cursor, click opens the program.
@@ -25,71 +13,38 @@
 //                 short click starts/pauses/resumes. LEDs: 10-LED countdown
 //                 bar, emptying out as time runs out, blinking green when
 //                 done.
+//   Pomodoro      Work / short break / work / ... / long break, auto-cycling
+//                 with a POMO_PHASE_TRANSITION_MS blink between phases (any
+//                 button skips the wait). LEDs: solid phase color.
 //   Availability  Short click toggles Available/Busy. LEDs: solid green
 //                 (available) or solid red (busy) - the whole point of the
 //                 program is to be readable at a glance.
 //
-// Orientation: a single filtered accel axis with hysteresis + debounce flips
-// the display 180 degrees depending on which edge of the monitor the device
-// is clipped to. Runs every loop regardless of which program is active.
-//
-// Wiring: see docs/HARDWARE.md.
+// Tunables: src/config.h.   Wiring: docs/HARDWARE.md.
 
+#include <Arduino.h>
 #include <Wire.h>
-#include <U8g2lib.h>
-#include <DFRobot_BMI160.h>
-#include <Adafruit_NeoPixel.h>
 
-// ============================== CONFIG ==============================
-#define PIN_I2C_SDA 8
-#define PIN_I2C_SCL 9
-#define PIN_LED_DATA 16
-#define PIN_BTN_F 4 // physical "F" -> logical LEFT
-#define PIN_BTN_B 5 // physical "B" -> logical RIGHT
-#define PIN_BTN_L 6 // physical "L" -> logical DOWN
-#define PIN_BTN_R 7 // physical "R" -> logical UP
-#define PIN_BTN_PRESS 15
-#define BMI160_I2C_ADDR 0x68
-
-#define NUM_LEDS 10              // 10 LEDs = one per 10% of the timer
-#define LED_BRIGHTNESS 60        // 0-255; capped low on purpose (power budget)
-#define COLOR_AVAILABLE 0x00FF00 // green = free
-#define COLOR_BUSY 0xFF0000      // red   = busy
-#define COLOR_PROGRESS 0xFFA500  // amber = timer running
-#define COLOR_DONE 0x00FF00      // green = timer done, blinking
-#define COLOR_OFF 0x000000
-#define DONE_BLINK_MS 500
-
-#define BTN_DEBOUNCE_MS 30
-#define LONG_PRESS_MS 800 // hold this long anywhere -> back to menu
-
-#define DEFAULT_HOURS 0
-#define DEFAULT_MINUTES 25 // classic pomodoro length
-#define DEFAULT_SECONDS 0
-
-#define FLIP_THRESHOLD 0.5f  // g; accel-x past +/- this commits a state
-#define FLIP_DEBOUNCE_MS 350 // must hold past threshold this long
-#define EMA_ALPHA 0.2f       // accel smoothing, 0..1 (higher = jumpier)
-
-#define LOOP_DELAY_MS 10
-#define DISPLAY_REDRAW_MS 100
-// ============================ END CONFIG =============================
-
-U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
-DFRobot_BMI160 bmi160;
-Adafruit_NeoPixel strip(NUM_LEDS, PIN_LED_DATA, NEO_GRB + NEO_KHZ800);
+#include "config.h"
+#include "hw/buttons.h"
+#include "hw/display.h"
+#include "hw/imu.h"
+#include "hw/leds.h"
 
 // ---- programs ----
 enum Program
 {
   PROGRAM_MENU,
   PROGRAM_TIMER,
+  PROGRAM_POMODORO,
   PROGRAM_AVAILABILITY
 };
 Program currentProgram = PROGRAM_MENU;
 
-const char *MENU_ITEMS[] = {"Timer", "Available / Busy"};
-const int MENU_COUNT = 2;
+// Menu rows are laid out for up to 3 entries - a 4th would collide with the
+// footer hint, and would need a scrolling window like the pre-simplify build.
+const char *MENU_ITEMS[] = {"Timer", "Pomodoro", "Available / Busy"};
+const int MENU_COUNT = 3;
 int menuIndex = 0;
 
 // ---- availability program ----
@@ -100,7 +55,7 @@ enum Availability
 };
 Availability availability = AVAIL_AVAILABLE;
 
-// ---- timer program (same state machine as test_button_timer.cpp) ----
+// ---- timer program ----
 enum TimerState
 {
   STATE_SET,
@@ -128,126 +83,27 @@ long remainingMs = 0;
 unsigned long lastTickMs = 0;
 unsigned long doneSinceMs = 0;
 
-// ---- orientation ----
-enum Orientation
+// ---- pomodoro program ----
+enum PomoRunState
 {
-  ORIENT_NORMAL,
-  ORIENT_FLIPPED
+  POMO_IDLE,
+  POMO_RUNNING,
+  POMO_PAUSED,
+  POMO_PHASE_DONE
 };
-Orientation currentOrientation = ORIENT_NORMAL;
-Orientation candidateOrientation = ORIENT_NORMAL;
-unsigned long candidateSinceMs = 0;
-float axFiltered = 0.0f;
-bool imuOk = false;
-
-// ---- debounced button, with long-press detection for the center click ----
-struct Button
+enum PomoPhase
 {
-  explicit Button(uint8_t p) : pin(p) {}
-
-  uint8_t pin;
-  bool stable = true; // true = released (pin idles high via pull-up)
-  bool lastReading = true;
-  unsigned long lastChangeMs = 0;
-  unsigned long pressedAtMs = 0;
-  bool clicked = false;     // true for exactly one loop pass after a short press
-  bool longPressed = false; // true for exactly one loop pass once held > LONG_PRESS_MS
-  bool longFired = false;   // internal: suppresses the trailing click after a long press
-
-  void begin() { pinMode(pin, INPUT_PULLUP); }
-
-  void update()
-  {
-    clicked = false;
-    longPressed = false;
-    bool reading = digitalRead(pin);
-    if (reading != lastReading)
-    {
-      lastChangeMs = millis();
-      lastReading = reading;
-    }
-    if ((millis() - lastChangeMs) > BTN_DEBOUNCE_MS && reading != stable)
-    {
-      stable = reading;
-      if (stable == LOW)
-      {
-        pressedAtMs = millis();
-        longFired = false;
-      }
-      else if (!longFired)
-      {
-        clicked = true;
-      }
-    }
-    if (stable == LOW && !longFired && (millis() - pressedAtMs) > LONG_PRESS_MS)
-    {
-      longFired = true;
-      longPressed = true;
-    }
-  }
+  PHASE_WORK,
+  PHASE_SHORT_BREAK,
+  PHASE_LONG_BREAK
 };
-
-Button btnF{PIN_BTN_F}, btnB{PIN_BTN_B}, btnL{PIN_BTN_L},
-    btnR{PIN_BTN_R}, btnPress{PIN_BTN_PRESS};
-
-// ============================= LEDs =================================
-
-void setAllLeds(uint32_t color)
-{
-  for (int i = 0; i < NUM_LEDS; i++)
-    strip.setPixelColor(i, color);
-  strip.show();
-}
-
-// Lights the first `lit` LEDs (out of NUM_LEDS) in COLOR_PROGRESS, rest off.
-void renderProgress(long remaining, long total)
-{
-  int lit = 0;
-  if (total > 0 && remaining > 0)
-  {
-    lit = (int)((remaining * (long)NUM_LEDS + total - 1) / total); // ceil
-    if (lit > NUM_LEDS)
-      lit = NUM_LEDS;
-  }
-  for (int i = 0; i < NUM_LEDS; i++)
-  {
-    strip.setPixelColor(i, i < lit ? COLOR_PROGRESS : COLOR_OFF);
-  }
-  strip.show();
-}
-
-void updateLeds()
-{
-  switch (currentProgram)
-  {
-  case PROGRAM_MENU:
-    setAllLeds(COLOR_OFF);
-    break;
-
-  case PROGRAM_AVAILABILITY:
-    setAllLeds(availability == AVAIL_AVAILABLE ? COLOR_AVAILABLE : COLOR_BUSY);
-    break;
-
-  case PROGRAM_TIMER:
-    switch (timerState)
-    {
-    case STATE_SET:
-      setAllLeds(COLOR_OFF);
-      break;
-    case STATE_RUNNING:
-    case STATE_PAUSED:
-      renderProgress(remainingMs, totalMs);
-      break;
-    case STATE_DONE:
-    {
-      bool on = ((millis() - doneSinceMs) / DONE_BLINK_MS) % 2 == 0;
-      setAllLeds(on ? COLOR_DONE : COLOR_OFF);
-      break;
-    }
-    }
-    break;
-  }
-}
+PomoRunState pomoRunState = POMO_IDLE;
+PomoPhase pomoPhase = PHASE_WORK;
+uint8_t pomoSessionCount = 0; // completed work sessions since the last long break
+long pomoTotalMs = 0;
+long pomoRemainingMs = 0;
+unsigned long pomoLastTickMs = 0;
+unsigned long pomoPhaseDoneSinceMs = 0;
 
 // =========================== timer ==================================
 
@@ -299,28 +155,125 @@ void adjustField(int dir)
   }
 }
 
-// ========================== buttons =================================
+// ========================== pomodoro ================================
 
-void handleButtons()
+const char *phaseLabel(PomoPhase phase)
 {
-  btnF.update();
-  btnB.update();
-  btnL.update();
-  btnR.update();
-  btnPress.update();
+  switch (phase)
+  {
+  case PHASE_WORK:
+    return "Work";
+  case PHASE_SHORT_BREAK:
+    return "Short Break";
+  case PHASE_LONG_BREAK:
+    return "Long Break";
+  }
+  return "";
+}
 
-  // physical -> logical, per the wiring note at the top of this file
-  bool leftClicked = btnF.clicked;
-  bool rightClicked = btnB.clicked;
-  bool downClicked = btnL.clicked;
-  bool upClicked = btnR.clicked;
-  bool pressClicked = btnPress.clicked;
-  bool pressLong = btnPress.longPressed;
+uint32_t phaseColor(PomoPhase phase)
+{
+  switch (phase)
+  {
+  case PHASE_WORK:
+    return COLOR_POMO_WORK;
+  case PHASE_SHORT_BREAK:
+    return COLOR_POMO_SHORT_BREAK;
+  case PHASE_LONG_BREAK:
+    return COLOR_POMO_LONG_BREAK;
+  }
+  return COLOR_POMO_SHORT_BREAK;
+}
 
-  if (pressLong)
+uint16_t phaseMinutes(PomoPhase phase)
+{
+  switch (phase)
+  {
+  case PHASE_WORK:
+    return DEFAULT_POMO_WORK_MIN;
+  case PHASE_SHORT_BREAK:
+    return DEFAULT_POMO_SHORT_MIN;
+  case PHASE_LONG_BREAK:
+    return DEFAULT_POMO_LONG_MIN;
+  }
+  return DEFAULT_POMO_WORK_MIN;
+}
+
+void pomoStart(PomoPhase phase)
+{
+  pomoPhase = phase;
+  pomoTotalMs = (long)phaseMinutes(phase) * 60L * 1000L;
+  pomoRemainingMs = pomoTotalMs;
+  pomoLastTickMs = millis();
+  pomoRunState = POMO_RUNNING;
+}
+
+// Work -> short break -> work -> ... -> long break every DEFAULT_POMO_SESSIONS.
+// Lands in POMO_PHASE_DONE so the next phase is announced before it starts.
+void pomoAdvancePhase()
+{
+  PomoPhase next;
+  if (pomoPhase == PHASE_WORK)
+  {
+    pomoSessionCount++;
+    if (pomoSessionCount >= DEFAULT_POMO_SESSIONS)
+    {
+      next = PHASE_LONG_BREAK;
+      pomoSessionCount = 0;
+    }
+    else
+    {
+      next = PHASE_SHORT_BREAK;
+    }
+  }
+  else
+  {
+    next = PHASE_WORK;
+  }
+  pomoPhase = next;
+  pomoRunState = POMO_PHASE_DONE;
+  pomoPhaseDoneSinceMs = millis();
+}
+
+void tickPomodoro()
+{
+  if (currentProgram != PROGRAM_POMODORO)
+    return;
+
+  if (pomoRunState == POMO_RUNNING)
+  {
+    unsigned long now = millis();
+    pomoRemainingMs -= (long)(now - pomoLastTickMs);
+    pomoLastTickMs = now;
+    if (pomoRemainingMs <= 0)
+    {
+      pomoRemainingMs = 0;
+      pomoAdvancePhase();
+    }
+  }
+  else if (pomoRunState == POMO_PHASE_DONE)
+  {
+    if ((millis() - pomoPhaseDoneSinceMs) > POMO_PHASE_TRANSITION_MS)
+    {
+      pomoStart(pomoPhase); // auto-continue into the phase we already advanced to
+    }
+  }
+}
+
+// ============================ input =================================
+
+// State transitions only - the polling and the pin mapping live in hw/buttons.
+void handleInput(const ButtonEvents &b)
+{
+  if (b.longClick)
   {
     if (currentProgram == PROGRAM_TIMER)
       timerState = STATE_SET; // abandon any running session
+    if (currentProgram == PROGRAM_POMODORO)
+    {
+      pomoRunState = POMO_IDLE; // abandon the whole cycle, not just the phase
+      pomoSessionCount = 0;
+    }
     currentProgram = PROGRAM_MENU;
     return;
   }
@@ -328,16 +281,63 @@ void handleButtons()
   switch (currentProgram)
   {
   case PROGRAM_MENU:
-    if (upClicked)
+    if (b.up)
       menuIndex = (menuIndex - 1 + MENU_COUNT) % MENU_COUNT;
-    if (downClicked)
+    if (b.down)
       menuIndex = (menuIndex + 1) % MENU_COUNT;
-    if (pressClicked)
-      currentProgram = (menuIndex == 0) ? PROGRAM_TIMER : PROGRAM_AVAILABILITY;
+    if (b.click)
+    {
+      switch (menuIndex)
+      {
+      case 0:
+        currentProgram = PROGRAM_TIMER;
+        break;
+      case 1:
+        currentProgram = PROGRAM_POMODORO;
+        break;
+      case 2:
+        currentProgram = PROGRAM_AVAILABILITY;
+        break;
+      }
+    }
+    break;
+
+  case PROGRAM_POMODORO:
+    switch (pomoRunState)
+    {
+    case POMO_IDLE:
+      if (b.click)
+        pomoStart(PHASE_WORK);
+      break;
+
+    case POMO_RUNNING:
+      if (b.click)
+        pomoRunState = POMO_PAUSED;
+      break;
+
+    case POMO_PAUSED:
+      if (b.click)
+      { // resume
+        pomoLastTickMs = millis();
+        pomoRunState = POMO_RUNNING;
+      }
+      if (b.down)
+      { // cancel the whole cycle
+        pomoRunState = POMO_IDLE;
+        pomoSessionCount = 0;
+      }
+      break;
+
+    case POMO_PHASE_DONE:
+      // any button skips the wait and starts the next phase now
+      if (b.click || b.up || b.down || b.left || b.right)
+        pomoStart(pomoPhase);
+      break;
+    }
     break;
 
   case PROGRAM_AVAILABILITY:
-    if (pressClicked)
+    if (b.click)
     {
       availability = (availability == AVAIL_AVAILABLE) ? AVAIL_BUSY : AVAIL_AVAILABLE;
     }
@@ -347,35 +347,35 @@ void handleButtons()
     switch (timerState)
     {
     case STATE_SET:
-      if (leftClicked)
+      if (b.left)
         cycleField(-1);
-      if (rightClicked)
+      if (b.right)
         cycleField(+1);
-      if (upClicked)
+      if (b.up)
         adjustField(+1);
-      if (downClicked)
+      if (b.down)
         adjustField(-1);
-      if (pressClicked)
+      if (b.click)
         startTimer();
       break;
 
     case STATE_RUNNING:
-      if (pressClicked)
+      if (b.click)
         timerState = STATE_PAUSED;
       break;
 
     case STATE_PAUSED:
-      if (pressClicked)
+      if (b.click)
       { // resume
         lastTickMs = millis();
         timerState = STATE_RUNNING;
       }
-      if (downClicked)
+      if (b.down)
         timerState = STATE_SET; // cancel back to editing
       break;
 
     case STATE_DONE:
-      if (pressClicked || upClicked || downClicked || leftClicked || rightClicked)
+      if (b.click || b.up || b.down || b.left || b.right)
       {
         timerState = STATE_SET;
       }
@@ -385,60 +385,90 @@ void handleButtons()
   }
 }
 
+// ============================= LEDs =================================
+
+void updateLeds()
+{
+  switch (currentProgram)
+  {
+  case PROGRAM_MENU:
+    ledsSetAll(COLOR_OFF);
+    break;
+
+  case PROGRAM_AVAILABILITY:
+    ledsSetAll(availability == AVAIL_AVAILABLE ? COLOR_AVAILABLE : COLOR_BUSY);
+    break;
+
+  // Solid phase color, not a countdown bar - the point is to be readable at a
+  // glance as "he's in a work block" vs "he's on a break".
+  case PROGRAM_POMODORO:
+    switch (pomoRunState)
+    {
+    case POMO_IDLE:
+      ledsSetAll(COLOR_AVAILABLE);
+      break;
+    case POMO_RUNNING:
+      ledsSetAll(phaseColor(pomoPhase));
+      break;
+    case POMO_PAUSED:
+      ledsSetAll(COLOR_BUSY);
+      break;
+    case POMO_PHASE_DONE:
+    {
+      bool on = ((millis() - pomoPhaseDoneSinceMs) / DONE_BLINK_MS) % 2 == 0;
+      ledsSetAll(on ? phaseColor(pomoPhase) : COLOR_OFF);
+      break;
+    }
+    }
+    break;
+
+  case PROGRAM_TIMER:
+    switch (timerState)
+    {
+    case STATE_SET:
+      ledsSetAll(COLOR_OFF);
+      break;
+    case STATE_RUNNING:
+    case STATE_PAUSED:
+      ledsSetProgress(remainingMs, totalMs);
+      break;
+    case STATE_DONE:
+    {
+      bool on = ((millis() - doneSinceMs) / DONE_BLINK_MS) % 2 == 0;
+      ledsSetAll(on ? COLOR_DONE : COLOR_OFF);
+      break;
+    }
+    }
+    break;
+  }
+}
+
 // ======================== orientation ===============================
 
-void readOrientation()
+// Main only cares that the orientation changed, not how it was measured.
+void applyOrientation()
 {
-  if (!imuOk)
-    return;
-
-  int16_t accelGyro[6] = {0};
-  if (bmi160.getAccelGyroData(accelGyro) != 0)
-    return;
-
-  float axRaw = accelGyro[3] / 16384.0f; // raw counts -> g (at +/-2g range)
-  axFiltered = axFiltered * (1.0f - EMA_ALPHA) + axRaw * EMA_ALPHA;
-
-  Orientation instant;
-  if (axFiltered > FLIP_THRESHOLD)
-    instant = ORIENT_NORMAL;
-  else if (axFiltered < -FLIP_THRESHOLD)
-    instant = ORIENT_FLIPPED;
-  else
-    return; // dead zone: keep last known state
-
-  if (instant != candidateOrientation)
+  static Orientation shown = ORIENT_NORMAL;
+  Orientation now = imuOrientation();
+  if (now != shown)
   {
-    candidateOrientation = instant;
-    candidateSinceMs = millis();
-  }
-  if (candidateOrientation != currentOrientation &&
-      (millis() - candidateSinceMs) > FLIP_DEBOUNCE_MS)
-  {
-    currentOrientation = candidateOrientation;
-    u8g2.setDisplayRotation(currentOrientation == ORIENT_NORMAL ? U8G2_R0 : U8G2_R2);
+    shown = now;
+    displaySetFlipped(now == ORIENT_FLIPPED);
   }
 }
 
-// ========================== display =================================
-
-void drawCentered(const uint8_t *font, int y, const char *text)
-{
-  u8g2.setFont(font);
-  u8g2.drawStr((128 - u8g2.getStrWidth(text)) / 2, y, text);
-}
+// =========================== screens ================================
 
 void drawMenu()
 {
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(0, 10, "Select program");
+  displayText(0, 10, "Select program");
   for (int i = 0; i < MENU_COUNT; i++)
   {
     char line[24];
     snprintf(line, sizeof(line), "%s%s", i == menuIndex ? "> " : "  ", MENU_ITEMS[i]);
-    u8g2.drawStr(4, 28 + i * 14, line);
+    displayText(4, 24 + i * 13, line);
   }
-  u8g2.drawStr(0, 62, "up/dn=move click=open");
+  displayText(0, 62, "up/dn=move click=open");
 }
 
 void drawTimer()
@@ -480,47 +510,86 @@ void drawTimer()
     break;
   }
 
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(0, 10, title);
-  drawCentered(u8g2_font_logisoso16_tr, 34, big);
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(0, 48, hint);
+  displayText(0, 10, title);
+  displayBigCentered(34, big);
+  displayText(0, 48, hint);
 
   if (timerState == STATE_RUNNING || timerState == STATE_PAUSED)
   {
     int lit = 0;
     if (totalMs > 0 && remainingMs > 0)
     {
-      lit = (int)((remainingMs * (long)NUM_LEDS + totalMs - 1) / totalMs);
-      if (lit > NUM_LEDS)
-        lit = NUM_LEDS;
+      lit = (int)((remainingMs * (long)PROGRESS_CHARS + totalMs - 1) / totalMs);
+      if (lit > PROGRESS_CHARS)
+        lit = PROGRESS_CHARS;
     }
-    char bar[NUM_LEDS + 1];
-    for (int i = 0; i < NUM_LEDS; i++)
+    char bar[PROGRESS_CHARS + 1];
+    for (int i = 0; i < PROGRESS_CHARS; i++)
       bar[i] = (i < lit) ? '#' : '-';
-    bar[NUM_LEDS] = '\0';
-    u8g2.drawStr(0, 62, bar);
+    bar[PROGRESS_CHARS] = '\0';
+    displayText(0, 62, bar);
   }
   else
   {
-    u8g2.drawStr(0, 62, "hold=menu");
+    displayText(0, 62, "hold=menu");
   }
+}
+
+void drawPomodoro()
+{
+  char big[20];
+  char sessionLine[20];
+  const char *hint = "";
+  long s;
+
+  switch (pomoRunState)
+  {
+  case POMO_IDLE:
+    snprintf(big, sizeof(big), "%02u:00", DEFAULT_POMO_WORK_MIN);
+    hint = "click=start";
+    break;
+  case POMO_RUNNING:
+    s = pomoRemainingMs / 1000;
+    snprintf(big, sizeof(big), "%02ld:%02ld", s / 60, s % 60);
+    hint = "click=pause";
+    break;
+  case POMO_PAUSED:
+    s = pomoRemainingMs / 1000;
+    snprintf(big, sizeof(big), "%02ld:%02ld", s / 60, s % 60);
+    hint = "click=resume v=stop";
+    break;
+  case POMO_PHASE_DONE:
+    snprintf(big, sizeof(big), "Next: %s", phaseLabel(pomoPhase));
+    hint = "press to skip";
+    break;
+  }
+
+  displayText(0, 10, phaseLabel(pomoPhase));
+  if (pomoRunState == POMO_PHASE_DONE)
+    displaySmallCentered(34, big); // the phase name won't fit in the big font
+  else
+    displayBigCentered(34, big);
+
+  uint8_t sessionDisplay = pomoSessionCount + 1;
+  if (sessionDisplay > DEFAULT_POMO_SESSIONS)
+    sessionDisplay = DEFAULT_POMO_SESSIONS;
+  snprintf(sessionLine, sizeof(sessionLine), "Session %u/%u", sessionDisplay,
+           DEFAULT_POMO_SESSIONS);
+  displayText(0, 48, sessionLine);
+  displayText(0, 62, hint);
 }
 
 void drawAvailability()
 {
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(0, 10, "Status");
-  drawCentered(u8g2_font_9x15B_tr, 36,
-               availability == AVAIL_AVAILABLE ? "AVAILABLE" : "BUSY");
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(0, 50, "click=toggle");
-  u8g2.drawStr(0, 62, "hold=menu");
+  displayText(0, 10, "Status");
+  displayBoldCentered(36, availability == AVAIL_AVAILABLE ? "AVAILABLE" : "BUSY");
+  displayText(0, 50, "click=toggle");
+  displayText(0, 62, "hold=menu");
 }
 
 void drawScreen()
 {
-  u8g2.clearBuffer();
+  displayBeginFrame();
   switch (currentProgram)
   {
   case PROGRAM_MENU:
@@ -529,11 +598,14 @@ void drawScreen()
   case PROGRAM_TIMER:
     drawTimer();
     break;
+  case PROGRAM_POMODORO:
+    drawPomodoro();
+    break;
   case PROGRAM_AVAILABILITY:
     drawAvailability();
     break;
   }
-  u8g2.sendBuffer();
+  displayEndFrame();
 }
 
 // ============================ setup/loop ============================
@@ -542,39 +614,25 @@ void setup()
 {
   Serial.begin(115200);
   delay(500);
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL); // shared bus: display + IMU
 
-  u8g2.begin();
+  displayBegin();
+  ledsBegin();
+  buttonsBegin();
 
-  strip.begin();
-  strip.setBrightness(LED_BRIGHTNESS);
-  setAllLeds(COLOR_OFF);
-
-  btnF.begin();
-  btnB.begin();
-  btnL.begin();
-  btnR.begin();
-  btnPress.begin();
-
-  if (bmi160.softReset() == BMI160_OK &&
-      bmi160.I2cInit(BMI160_I2C_ADDR) == BMI160_OK)
-  {
-    imuOk = true;
-    Serial.println("IMU: init OK");
-  }
-  else
-  {
-    Serial.println("IMU: init failed - auto-flip disabled this session");
-  }
+  // A missing IMU is not fatal - the firmware just runs without auto-flip.
+  Serial.println(imuBegin() ? "IMU: init OK"
+                            : "IMU: init failed - auto-flip disabled this session");
 
   Serial.println("FocusDock ready");
 }
 
 void loop()
 {
-  handleButtons();
+  handleInput(buttonsPoll());
   tickTimer();
-  readOrientation();
+  tickPomodoro();
+  applyOrientation();
   updateLeds();
 
   static unsigned long lastDrawMs = 0;

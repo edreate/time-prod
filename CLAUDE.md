@@ -35,41 +35,66 @@ selecting **exactly one** `.cpp` via `build_src_filter`:
 
 | ENV | Source |
 |---|---|
-| `time-prod-app` (default) | `src/main.cpp` — the real firmware |
+| `time-prod-app` (default) | `src/main.cpp` (+ the `src/hw/` headers it includes) |
 | `test-peripherals` | `src/test_peripherals.cpp` — I2C scan + display + IMU readout |
 
-PlatformIO otherwise compiles every `.cpp` in `src/`, and each defines its
-own `setup()`/`loop()` — so **a new file in `src/` must be added to a
-`build_src_filter`, or every env fails with duplicate symbols.** New test
-firmwares get a new `[env:...]` block, not an `#ifdef`.
+`build_src_filter` is an **allowlist of `.cpp` files**: one it doesn't match is
+silently not compiled, and one matched by two envs breaks both with duplicate
+`setup()`/`loop()`. So **a new `.cpp` in `src/` must be added to a
+`build_src_filter`.** The `src/hw/` modules are header-only and need no entry —
+they compile as part of whichever `.cpp` includes them. New test firmwares get
+a new `[env:...]` block, not an `#ifdef`.
 
-## Firmware structure (`src/main.cpp`)
+`test_peripherals.cpp` deliberately talks to the raw libraries instead of
+`src/hw/` — it is the bring-up sketch you reach for when the modules
+themselves are suspect.
 
-Single translation unit: header comment → **CONFIG block** → state enums →
-subsystem sections (LEDs, timer, buttons, orientation, display) →
-`setup()`/`loop()`.
+## Firmware structure
 
-- **CONFIG block** — every tunable (pins, colors, defaults, thresholds) is a
-  `#define` in one marked block at the top. Put new tunables there; the docs
-  point readers to it as the one place to re-map pins.
-- **Cooperative loop, no RTOS tasks.** `loop()` runs `handleButtons() →
-  tickTimer() → readOrientation() → updateLeds()`, throttles redraw to
+Hardware sits behind small modules in `src/hw/`; `main.cpp` is the app alone
+and never touches a driver library.
+
+| File | Owns |
+|---|---|
+| `src/config.h` | every tunable — pins, colors, defaults, thresholds |
+| `src/hw/display.h` | the U8g2 panel: text primitives, `displaySetFlipped()` |
+| `src/hw/leds.h` | the WS2812B strip: `ledsSetAll()`, `ledsSetProgress()` |
+| `src/hw/imu.h` | the BMI160: returns an `Orientation`, never a raw accel |
+| `src/hw/buttons.h` | debounce + the physical→logical map: returns `ButtonEvents` |
+| `src/main.cpp` | state enums, timer, input handling, screens, `setup()`/`loop()` |
+
+- **Header-only modules.** No `.cpp` files — each `src/hw/*.h` holds its driver
+  object and state as `static` and its functions as `inline`. The toolchain is
+  `gnu++11`, so `inline` variables are unavailable; `static` is what makes this
+  work. **Include each hardware header from exactly one `.cpp`** — a second
+  includer silently gets its own copy of the driver and its state.
+- **Plain prefixed free functions** (`displayBegin()`, `imuOrientation()`), no
+  namespaces or classes.
+- **`src/config.h`** — every tunable is a `#define` here. Put new tunables in
+  it; the docs point readers to it as the one place to re-map pins. Don't reuse
+  a driver library's macro name (`IMU_I2C_ADDR`, not `BMI160_I2C_ADDR`) — which
+  definition wins would then depend on include order.
+- **Adding a sensor** = a new `src/hw/*.h` exposing a plain value, plus a
+  `begin()` in `setup()` and a line in `loop()`. Keep the math inside the
+  module — main should receive a decision, not a reading.
+- **Cooperative loop, no RTOS tasks.** `loop()` runs `handleInput(buttonsPoll())
+  → tickTimer() → applyOrientation() → updateLeds()`, throttles redraw to
   `DISPLAY_REDRAW_MS`, then yields with a single `delay(LOOP_DELAY_MS)`. All
   timing is `millis()` deltas. Anything blocking stalls button response and
   the timer tick alike.
 - **Plain enum state machines** (`Program`, `TimerState`, `Field`,
-  `Availability`, `Orientation`) written from `handleButtons()`; rendering and
-  LED output derive from that state. Keep input and rendering separate.
-- **`Button`** debounces and exposes `clicked` / `longPressed` as one-shot
-  flags valid for exactly one loop pass — read them once per iteration.
+  `Availability`) written from `handleInput()`; rendering and LED output derive
+  from that state. Keep input and rendering separate.
+- **`ButtonEvents`** flags are one-shots valid for exactly one loop pass — poll
+  once per iteration and pass the struct around.
 - **Long-press the center click returns to the menu from any screen**, so no
   direction button is spent on back.
 
 ### Button mapping: physical ≠ logical
 
 The 5-way module sits rotated relative to the display. `docs/HARDWARE.md`
-names pins by **silkscreen**; the firmware remaps them once at the top of
-`handleButtons()`:
+names pins by **silkscreen**; `buttonsPoll()` remaps them once, so the rest of
+the firmware only ever sees logical directions:
 
 ```
 GPIO4  physical F -> logical LEFT     GPIO6  physical L -> logical DOWN
@@ -82,18 +107,28 @@ Write UI logic in logical terms. The remap is fixed at the wires — it does
 
 ### Orientation auto-flip
 
-`readOrientation()` smooths one accel axis with an EMA (`EMA_ALPHA`), applies
-a `±FLIP_THRESHOLD` hysteresis dead zone (inside it: keep last state), and
-requires the candidate to hold `FLIP_DEBOUNCE_MS` before committing
-`setDisplayRotation()`. All three guards exist to stop flicker when the
-device is handled — don't simplify them away.
+`imuOrientation()` (in `src/hw/imu.h`) smooths one accel axis with an EMA
+(`EMA_ALPHA`), applies a `±FLIP_THRESHOLD` hysteresis dead zone (inside it:
+keep last state), and requires the candidate to hold `FLIP_DEBOUNCE_MS` before
+committing. All three guards exist to stop flicker when the device is handled
+— don't simplify them away.
 
-IMU init failure is non-fatal: `imuOk` gates the read and the firmware runs
-with auto-flip disabled. Keep new hardware optional the same way.
+The IMU does **not** rotate the display itself. `applyOrientation()` in
+`main.cpp` compares the returned value against the last one shown and calls
+`displaySetFlipped()` on a change — the sensor and the panel stay independent.
+
+IMU init failure is non-fatal: `imuBegin()` returns false, `imuOrientation()`
+keeps returning the last state, and the firmware runs with auto-flip disabled.
+Keep new hardware optional the same way.
 
 ## Not built yet
 
-Pomodoro, the Wi-Fi settings page, and settings persistence were removed on
-this branch and are back on the README roadmap. An earlier commit has a
-working implementation of all three (`git show HEAD:src/main.cpp`) if they
-get rebuilt.
+The Wi-Fi settings page and settings persistence were removed on this branch
+(commit `ba297e1 "simplified"`) and are back on the README roadmap. Commit
+`7c3a6c0` has a working implementation of both (`git show 7c3a6c0:src/main.cpp`)
+if they get rebuilt — that is also where the Info screen lives, which is pure
+Wi-Fi (SSID / AP IP / MAC) and only makes sense alongside them.
+
+Pomodoro was removed by the same commit but has since been restored onto the
+module structure, with its durations as `config.h` defines rather than
+persisted settings.

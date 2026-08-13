@@ -96,7 +96,7 @@ for a few milliseconds, producing dozens of fake press/release events.
 **Debouncing** means ignoring changes until the signal has been stable for a
 while.
 
-*In this project:* the `Button` struct in `src/main.cpp` only accepts a state
+*In this project:* the `Button` struct in `src/hw/buttons.h` only accepts a state
 change after it has held steady for `BTN_DEBOUNCE_MS` (30 ms). Without it, one
 click could jump the timer by several steps.
 
