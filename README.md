@@ -92,9 +92,9 @@ hardware — useful after wiring changes:
 | `ENV` | What it checks |
 |---|---|
 | `time-prod-app` *(default)* | The real firmware — everything |
-| `test-bringup` | I2C scan + display + IMU readout: is everything wired and answering? |
+| `test-peripherals` | I2C scan + display + IMU readout: is everything wired and answering? |
 
-Flash it with `make flash ENV=test-bringup PORT=...`.
+Flash it with `make flash ENV=test-peripherals PORT=...`.
 
 ## Tweaking the firmware
 
@@ -106,7 +106,7 @@ Project layout:
 
 ```
 src/main.cpp        the firmware (CONFIG block on top)
-src/test_bringup.cpp  hardware bring-up test build
+src/test_peripherals.cpp  peripheral check test build
 platformio.ini      build configuration (one env per firmware)
 Makefile            build/upload/monitor shortcuts
 docs/HARDWARE.md    parts, wiring, circuit diagram

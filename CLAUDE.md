@@ -19,7 +19,7 @@ the concepts behind them in [`docs/ELECTRONICS.md`](docs/ELECTRONICS.md).
 make ports                          # find the board's /dev/cu.* name
 make build
 make flash PORT=/dev/cu.usbmodemXXXX    # upload, then monitor
-make flash ENV=test-bringup PORT=...    # hardware check firmware
+make flash ENV=test-peripherals PORT=...  # hardware check firmware
 ```
 
 `ENV` defaults to `time-prod-app`. `make setup` (PlatformIO install +
@@ -36,7 +36,7 @@ selecting **exactly one** `.cpp` via `build_src_filter`:
 | ENV | Source |
 |---|---|
 | `time-prod-app` (default) | `src/main.cpp` — the real firmware |
-| `test-bringup` | `src/test_bringup.cpp` — I2C scan + display + IMU readout |
+| `test-peripherals` | `src/test_peripherals.cpp` — I2C scan + display + IMU readout |
 
 PlatformIO otherwise compiles every `.cpp` in `src/`, and each defines its
 own `setup()`/`loop()` — so **a new file in `src/` must be added to a

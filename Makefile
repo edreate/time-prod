@@ -7,7 +7,7 @@
 #
 # ENV selects which firmware to build/upload (see platformio.ini):
 #   time-prod-app  (default) the firmware: menu / timer / availability + auto-flip
-#   test-bringup             I2C scan + display + IMU readout
+#   test-peripherals         I2C scan + display + IMU readout
 #
 # build/upload/monitor/flash all depend on setup having run at least once,
 # so a fresh checkout just needs `make flash` - setup runs automatically.
