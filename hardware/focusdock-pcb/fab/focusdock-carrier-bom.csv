@@ -1,0 +1,13 @@
+value,footprint,quantity,references
+DevKit J3,Connector_PinSocket_2.54mm:PinSocket_1x22_P2.54mm_Vertical,1,['J3']
+MountingHole_2.7mm,MountingHole:MountingHole_2.7mm,4,"['MH1', 'MH4', 'MH2', 'MH3']"
+100uF,Capacitor_SMD:C_1206_3216Metric,1,['C3']
+LED VDD sel,Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm,1,['JP1']
+100nF,Capacitor_SMD:C_0805_2012Metric,1,['C1']
+BMI160 IMU,Connector_PinSocket_2.54mm:PinSocket_1x12_P2.54mm_Vertical,1,['J4']
+DevKit J1,Connector_PinSocket_2.54mm:PinSocket_1x22_P2.54mm_Vertical,1,['J1']
+OLED SH1106,Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical,1,['J2']
+WS2812B strip,Connector_PinSocket_2.54mm:PinSocket_1x03_P2.54mm_Vertical,1,['J5']
+5DirKey V1-2,Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical,1,['J6']
+10uF,Capacitor_SMD:C_0805_2012Metric,1,['C2']
+330R,Resistor_SMD:R_0805_2012Metric,1,['R1']

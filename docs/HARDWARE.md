@@ -9,6 +9,11 @@ it explains each concept in a few lines.
 
 ![Breadboard prototype](breadboard.jpeg)
 
+A PCB version of this exact wiring now exists: a carrier board that keeps every
+module and replaces only the jumper wires. See
+[`hardware/focusdock-pcb/`](../hardware/focusdock-pcb/README.md). The wiring
+table below stays the source of truth — the board is built from it.
+
 ## Parts (Bill of Materials)
 
 | Part | Exact module | What it does |
