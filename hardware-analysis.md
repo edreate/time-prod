@@ -11,6 +11,12 @@ questions:
 Every number below is from a primary source — Espressif's own schematic, the
 WS2812B datasheet, and the diode datasheet — not from a quoted figure.
 
+![Power architecture](docs/power-architecture.svg)
+
+*Source: [`docs/power-architecture.drawio`](docs/power-architecture.drawio) —
+open in [draw.io](https://app.diagrams.net) or the VS Code Draw.io extension.
+Re-export to SVG after editing.*
+
 ---
 
 ## 1. Current state (verified)
