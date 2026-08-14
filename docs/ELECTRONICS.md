@@ -41,7 +41,7 @@ chip has an **address** (a number like 0x68) so the ESP32 can talk to one chip
 at a time, like calling a name in a room.
 
 *In this project:* the OLED display (address 0x3C) and the IMU (0x68) share
-the same two wires, GPIO8 (SDA) and GPIO9 (SCL). The `test-bringup` firmware
+the same two wires, GPIO8 (SDA) and GPIO9 (SCL). The `test-peripherals` firmware
 scans the bus and prints every address that answers — the first thing to check
 when something doesn't respond.
 
@@ -96,7 +96,7 @@ for a few milliseconds, producing dozens of fake press/release events.
 **Debouncing** means ignoring changes until the signal has been stable for a
 while.
 
-*In this project:* the `Button` struct in `src/main.cpp` only accepts a state
+*In this project:* the `Button` struct in `src/hardware/buttons.h` only accepts a state
 change after it has held steady for `BTN_DEBOUNCE_MS` (30 ms). Without it, one
 click could jump the timer by several steps.
 

@@ -2,16 +2,12 @@
 #   make setup                          # one-time: installs PlatformIO + pulls toolchain/libs
 #   make build   [ENV=...]
 #   make upload  [ENV=...] PORT=/dev/cu.usbmodemXXXX
-#   make monitor         PORT=/dev/cu.usbmodemXXXX
+#   make monitor        PORT=/dev/cu.usbmodemXXXX
 #   make flash   [ENV=...] PORT=/dev/cu.usbmodemXXXX   (upload, then monitor)
 #
 # ENV selects which firmware to build/upload (see platformio.ini):
-#   esp32-s3              (default) the real firmware: timer + LEDs + flip + Wi-Fi
-#   test-bringup          I2C scan + display + IMU readout
-#   test-orientation      flips the display 180 based on IMU accel
-#   test-orientation-led  same, plus LED color change
-#   test-button-timer     button-set H:M:S timer + 10-LED countdown bar
-#   test-program-menu     menu (Timer / Available-Busy) + IMU auto-flip
+#   time-prod-app  (default) the firmware: menu / timer / availability + auto-flip
+#   test-peripherals         I2C scan + display + IMU readout
 #
 # build/upload/monitor/flash all depend on setup having run at least once,
 # so a fresh checkout just needs `make flash` - setup runs automatically.
@@ -24,9 +20,8 @@
 # script isn't on PATH (common after `pip3 install --user`).
 
 PIO  ?= python3 -m platformio
-PORT ?= /dev/cu.usbmodem1101
-ENV  ?= esp32-s3
-MON_PORT ?= /dev/cu.usbmodem59700474361
+PORT ?= /dev/cu.usbmodem2101
+ENV  ?= time-prod-app
 
 .PHONY: setup build upload monitor flash clean ports
 
@@ -44,7 +39,7 @@ upload: .setup-stamp
 	$(PIO) run -e $(ENV) -t upload --upload-port $(PORT)
 
 monitor: .setup-stamp
-	$(PIO) device monitor -p $(MON_PORT) -b 115200
+	$(PIO) device monitor -p $(PORT) -b 115200
 
 flash: upload monitor
 
