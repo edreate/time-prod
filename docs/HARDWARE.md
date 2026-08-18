@@ -21,8 +21,10 @@ it explains each concept in a few lines.
 | Resistor | 330-470 Ω | Protects the first LED's data input |
 
 Planned but not on the breadboard yet: presence sensor (detect a docked
-phone), USB-C power breakout, 74AHCT125 level shifter, 1000 µF capacitor,
-Schottky diode (see [Roadmap in the README](../README.md#roadmap)).
+phone), USB-C power breakout (connector only — no dual-power diode needed,
+the device is USB-only), 74AHCT125 level shifter, 1000 µF capacitor — exact
+specs for the last two are in [Level shifter & capacitor](#level-shifter--capacitor---exact-specs)
+below (see [Roadmap in the README](../README.md#roadmap) for the rest).
 
 ## Circuit diagram (breadboard prototype)
 
@@ -97,13 +99,56 @@ something differently, change it there.
   our capped brightness is more like **8-10 mA**. The ≤10-LED prototype is fine
   on USB power. The full 20-30 LED ring needs a **5V/3A supply**, the level
   shifter, and a **1000 µF capacitor** across the strip's power pins.
+- The device is **USB-only, permanently** — no battery, so no diode is needed
+  to combine power sources safely. That also means the LED strip and the
+  ESP32 share one supply rail: a sudden LED current spike (several LEDs
+  switching at once) can sag that shared rail enough to brown out the board.
+  The 1000 µF cap above isn't just for the full ring — it's what prevents
+  mid-session resets on the 5V strip at any LED count, so treat it as needed
+  as soon as VDD moves off 3.3V, not deferred until scaling up.
 - Firmware caps brightness in software (`LED_BRIGHTNESS` in `src/config.h`)
   so the strip can never draw enough to brown out the board.
 
+## Level shifter & capacitor — exact specs
+
+Both parts sit on the LED strip's power/data lines and become necessary the
+moment strip VDD moves off 3.3V onto 5V (see Power notes above) — not
+deferred until the full 20-30 LED ring.
+
+**Level shifter — 74AHCT125** (quad 3-state buffer; e.g. TI `SN74AHCT125N`,
+PDIP-14 for the breadboard, or `74AHCT125D` SOIC-14 for a future PCB). AHCT
+specifically, not HC/AHC/HCT's other siblings — its inputs use TTL-level
+thresholds, so it reliably reads the ESP32's 3.3V HIGH even though the chip
+itself runs on 5V. Only one of its four gates is needed:
+
+| Pin | Signal | Wire to |
+|---|---|---|
+| 14 | VCC | **5V** rail (same supply as the LED strip — not 3.3V, or the output swing is wrong) |
+| 7 | GND | GND rail |
+| 1 | 1OE̅ (output enable, active low) | GND — ties it permanently enabled |
+| 2 | 1A (input) | GPIO16 (`PIN_LED_DATA`), the existing 3.3V data signal |
+| 3 | 1Y (output) | the existing 330-470 Ω resistor → LED strip DIN |
+| 4, 10, 13 | 2OE̅/3OE̅/4OE̅ (unused gates) | VCC — disables their outputs |
+| 5, 9, 12 | 2A/3A/4A (unused gates) | GND — avoids floating CMOS inputs |
+
+Add a 0.1 µF ceramic capacitor across pins 14 (VCC) and 7 (GND), as close to
+the chip as possible — standard IC decoupling, per the TI datasheet.
+
+**Bulk capacitor — 1000 µF, ≥16V, radial electrolytic** (any brand; e.g.
+Nichicon UVZ-series, Panasonic EEU-FR-series, or an equivalent generic part —
+this is a commodity component, no need to match a specific SKU). Adafruit's
+own NeoPixel guidance sets 6.3V as the floor for a 5V rail; 16V gives real
+margin on a component that's cheap either way and protects against
+transients above nominal 5V.
+
+- **Polarity matters** — it's electrolytic. `+` to the strip's `VDD`, `−`
+  (marked with a stripe) to `GND`. Reversed, it can fail and vent.
+- **Placement matters** — across the strip's own V+/GND pins, physically at
+  the first LED, not back at the ESP32 or the level shifter. That's what
+  actually damps the current spike at its source.
+
 ## Decisions locked for the prototype
 
-- Level shifter (74AHCT125) skipped for now — 3.3V data direct, short wires.
-  Add it back before scaling LED count or finalizing a board.
 - I2C bus: GPIO8 (SDA) / GPIO9 (SCL), shared by display + IMU.
 - IMU CS tied to 3.3V (forces I2C mode). Verify against your breakout's
   silkscreen — some BMI160 boards wire CS differently.

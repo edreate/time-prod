@@ -134,9 +134,15 @@ What it takes to go from breadboard to a product with a long life:
 
 **Hardware**
 - [ ] Move LED strip to proper 5V power + 74AHCT125 level shifter + 1000 µF cap
+      (exact part specs and wiring: [HARDWARE.md](docs/HARDWARE.md#level-shifter--capacitor---exact-specs);
+      the cap matters more than it looks — needed at any LED count once VDD
+      leaves 3.3V, not just at full scale)
 - [ ] Presence sensor for the phone dock (IR / light / pressure — pick one)
-- [ ] USB-C power breakout with Schottky diode (safe dual-power)
-- [ ] Scale to the full 20-30 LED ring on a 5V/3A supply
+- [ ] USB-C power breakout (connector/strain relief only — no Schottky diode
+      needed: the device is USB-only, no battery, so there's no second supply
+      to safely combine)
+- [ ] Scale to the full 20-30 LED ring on a 5V/2-3A USB-C PD wall charger
+      (a laptop USB port can't supply this — plan the charger, not just the ring)
 - [ ] Enclosure + monitor clip design (3D-printed first)
 - [ ] Evaluate rotary encoder vs. 5-way button for the final feel
 - [ ] Custom PCB once the design settles
@@ -145,8 +151,16 @@ What it takes to go from breadboard to a product with a long life:
 - [ ] Dock/undock actions (auto-start focus session when phone is docked)
 - [x] Pomodoro program (work / short break / long break, auto-cycling)
 - [ ] Settings page over the device's own Wi-Fi hotspot, saved across power-off
-      (would also bring back the Info screen: SSID / IP / MAC)
-- [ ] Wi-Fi client mode + NTP so the menu screen can show a clock
+      (would also bring back the Info screen: SSID / IP / MAC). **Wi-Fi
+      defaults OFF on boot** and is a menu toggle to turn on when needed —
+      the radio's active/TX current is a meaningful add to the power budget
+      (see Power notes in HARDWARE.md), so it shouldn't be on by default.
+- [ ] Wi-Fi client mode + NTP so the menu screen can show a clock (same
+      default-off, menu-toggle-on behavior applies)
+- [ ] Max-brightness LED mode as a menu setting, off by default. Default
+      brightness stays at the current power-safe cap (`LED_BRIGHTNESS` in
+      `src/config.h`); a menu option raises it for whoever's on a supply
+      that can take it, rather than the firmware assuming one globally.
 - [ ] Calendar integration (busy light follows your meetings automatically)
 - [ ] Optional buzzer/chime when the session ends
 - [ ] Over-the-air firmware updates (no cable needed)

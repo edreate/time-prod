@@ -1,0 +1,12 @@
+
+encoder button: 
+https://de.aliexpress.com/item/1005008188280249.html?spm=a2g0o.cart.0.0.1f5e38dayvn1bE&mp=1&pdp_npi=6%40dis%21EUR%21EUR+20.41%21EUR+6.59%21%21EUR+6.59%21%21%21%400b0fe0e117870492442322349e0ff4%2112000044170224918%21ct%21DE%21235009039%21%211%210%21&gatewayAdapt=glo2deu
+
+
+esp32c3 super mini
+https://de.aliexpress.com/item/1005007479144456.html?spm=a2g0o.cart.0.0.1f5e38dayvn1bE&mp=1&pdp_npi=6%40dis%21EUR%21EUR+8.24%21EUR+2.55%21%21EUR+2.55%21%21%21%400b0fe0e117870492442322349e0ff4%2112000040920875458%21ct%21DE%21235009039%21%215%210%21&gatewayAdapt=glo2deu
+
+
+
+esp32s3 zero
+https://de.aliexpress.com/item/1005007171129437.html?spm=a2g0o.productlist.main.1.430f56058X7u2U&algo_pvid=afc285a0-8ddd-4a2d-aa23-f19baf6f4fde&algo_exp_id=afc285a0-8ddd-4a2d-aa23-f19baf6f4fde-0&pdp_ext_f=%7B%22order%22%3A%2223873%22%2C%22eval%22%3A%221%22%2C%22orig_sl_item_id%22%3A%221005007171129437%22%2C%22orig_item_id%22%3A%221005009890203011%22%2C%22fromPage%22%3A%22search%22%7D&pdp_npi=6%40dis%21EUR%217.54%213.69%21%21%2157.50%2128.17%21%400b88489417870505156051243e0d23%2112000039691781246%21sea%21DE%21235009039%21X%211%210%21n_tag%3A-29919%3Bd%3A83f889b6%3Bm03_new_user%3A-29895&curPageLogUid=d81tFNHMC6z1&utparam-url=scene%3Asearch%7Cquery_from%3A%7Cx_object_id%3A1005007171129437%7C_p_origin_prod%3A1005009890203011
