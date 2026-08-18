@@ -87,14 +87,21 @@ connection — reseat the cable and retry.
 ### Test firmwares
 
 Besides the main firmware there's a small test build for checking the
-hardware — useful after wiring changes:
+hardware — useful after wiring changes. Two boards exist during the
+prototype transition (today's N16R8 devkit, and an ESP32-S3 Zero being
+evaluated as a smaller replacement — see
+[docs/prototype-hardware/README.md](docs/prototype-hardware/README.md)), so
+`ENV` picks firmware **and** board:
 
-| `ENV` | What it checks |
-|---|---|
-| `time-prod-app` *(default)* | The real firmware — everything |
-| `test-peripherals` | I2C scan + display + IMU readout: is everything wired and answering? |
+| `ENV` | What it checks | Board |
+|---|---|---|
+| `time-prod-app-n16r8` *(default)* | The real firmware — everything | N16R8 devkit |
+| `test-peripherals-n16r8` | I2C scan + display + IMU readout: is everything wired and answering? | N16R8 devkit |
+| `time-prod-app-s3zero` | The real firmware | ESP32-S3 Zero |
+| `test-peripherals-s3zero` | Same hardware check, on the S3 Zero — flash this first on a new S3 Zero board | ESP32-S3 Zero |
 
-Flash it with `make flash ENV=test-peripherals PORT=...`.
+Flash it with `make flash ENV=test-peripherals-n16r8 PORT=...` (swap the
+`ENV` for whichever board/firmware combination you need).
 
 ## Tweaking the firmware
 
@@ -122,7 +129,7 @@ src/software/pomodoro.h   pomodoro program
 src/software/availability.h  available / busy program
 src/main.cpp              the shell: menu, dispatch, loop
 src/test_peripherals.cpp  peripheral check test build
-platformio.ini      build configuration (one env per firmware)
+platformio.ini      build configuration (one env per firmware x board)
 Makefile            build/upload/monitor shortcuts
 docs/HARDWARE.md    parts, wiring, circuit diagram
 docs/ELECTRONICS.md electronics concepts, briefly explained
@@ -133,43 +140,30 @@ docs/ELECTRONICS.md electronics concepts, briefly explained
 What it takes to go from breadboard to a product with a long life:
 
 **Hardware**
-- [ ] Move LED strip to proper 5V power + 74AHCT125 level shifter + 1000 µF cap
-      (exact part specs and wiring: [HARDWARE.md](docs/HARDWARE.md#level-shifter--capacitor---exact-specs);
-      the cap matters more than it looks — needed at any LED count once VDD
-      leaves 3.3V, not just at full scale)
-- [ ] Presence sensor for the phone dock (IR / light / pressure — pick one)
-- [ ] USB-C power breakout (connector/strain relief only — no Schottky diode
-      needed: the device is USB-only, no battery, so there's no second supply
-      to safely combine)
-- [ ] Scale to the full 20-30 LED ring on a 5V/2-3A USB-C PD wall charger
-      (a laptop USB port can't supply this — plan the charger, not just the ring)
-- [ ] Enclosure + monitor clip design (3D-printed first)
-- [ ] Evaluate rotary encoder vs. 5-way button for the final feel
+- [ ] Powered by USB only — no battery, no dual-power diode needed
+  - [ ] Move LED strip to proper 5V power + 74AHCT125 level shifter +
+        1000 µF cap (required at the current 10-LED count, not just at
+        scale — exact specs: [HARDWARE.md](docs/HARDWARE.md#level-shifter--capacitor---exact-specs))
+- [ ] Supports up to 10 LEDs at max brightness, on a USB 3.0 port (~700-750mA
+      draw against USB 3.0's 900mA — see Power notes in HARDWARE.md)
 - [ ] Custom PCB once the design settles
 
 **Firmware**
-- [ ] Dock/undock actions (auto-start focus session when phone is docked)
+- [ ] One button to instantly switch between available and busy
 - [x] Pomodoro program (work / short break / long break, auto-cycling)
-- [ ] Settings page over the device's own Wi-Fi hotspot, saved across power-off
-      (would also bring back the Info screen: SSID / IP / MAC). **Wi-Fi
-      defaults OFF on boot** and is a menu toggle to turn on when needed —
-      the radio's active/TX current is a meaningful add to the power budget
-      (see Power notes in HARDWARE.md), so it shouldn't be on by default.
-- [ ] Wi-Fi client mode + NTP so the menu screen can show a clock (same
-      default-off, menu-toggle-on behavior applies)
+- [ ] Settings page over the device's own Wi-Fi hotspot, saved across power-off.
+      **Wi-Fi defaults OFF on boot**, menu toggle to enable — its active/TX
+      current isn't budgeted into the power target above by default.
+- [ ] Wi-Fi client mode (optional, same default-off behavior)
+- [ ] Factory-reset gesture (e.g. hold click 10s)
 - [ ] Max-brightness LED mode as a menu setting, off by default. Default
       brightness stays at the current power-safe cap (`LED_BRIGHTNESS` in
       `src/config.h`); a menu option raises it for whoever's on a supply
       that can take it, rather than the firmware assuming one globally.
-- [ ] Calendar integration (busy light follows your meetings automatically)
-- [ ] Optional buzzer/chime when the session ends
-- [ ] Over-the-air firmware updates (no cable needed)
-- [ ] MQTT / Home Assistant integration
-- [ ] Factory-reset gesture (e.g. hold click 10 s)
+- [ ] Over-the-air firmware updates (optional)
 
 **Product**
 - [ ] Session stats (focus minutes per day/week)
-- [ ] Battery option + deep sleep for cable-free desks
 - [ ] User-test with non-technical people; simplify anything they stumble on
 
 ## License

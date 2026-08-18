@@ -41,9 +41,9 @@ chip has an **address** (a number like 0x68) so the ESP32 can talk to one chip
 at a time, like calling a name in a room.
 
 *In this project:* the OLED display (address 0x3C) and the IMU (0x68) share
-the same two wires, GPIO8 (SDA) and GPIO9 (SCL). The `test-peripherals` firmware
-scans the bus and prints every address that answers — the first thing to check
-when something doesn't respond.
+the same two wires, GPIO8 (SDA) and GPIO9 (SCL). The `test-peripherals-*`
+firmware scans the bus and prints every address that answers — the first
+thing to check when something doesn't respond.
 
 ## Addressable LEDs (WS2812B)
 

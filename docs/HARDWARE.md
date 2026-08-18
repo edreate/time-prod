@@ -20,11 +20,9 @@ it explains each concept in a few lines.
 | 5-way button | 5DirKey V1-2 | Up/down/left/right/click input |
 | Resistor | 330-470 Ω | Protects the first LED's data input |
 
-Planned but not on the breadboard yet: presence sensor (detect a docked
-phone), USB-C power breakout (connector only — no dual-power diode needed,
-the device is USB-only), 74AHCT125 level shifter, 1000 µF capacitor — exact
-specs for the last two are in [Level shifter & capacitor](#level-shifter--capacitor---exact-specs)
-below (see [Roadmap in the README](../README.md#roadmap) for the rest).
+Planned but not on the breadboard yet: the **74AHCT125 level shifter** and
+**1000 µF capacitor** for the LED strip's 5V power — exact specs and wiring
+in [Level shifter & capacitor](#level-shifter--capacitor---exact-specs) below.
 
 ## Circuit diagram (breadboard prototype)
 
@@ -95,25 +93,41 @@ something differently, change it there.
 - One nice side effect of 3.3V: the data line matches the ESP32's 3.3V logic,
   so no level shifter is needed *yet*. At 5V VDD the 3.3V data signal is
   marginal — add the 74AHCT125 level shifter before scaling up.
-- Budget: a WS2812B draws up to **60 mA at full white**, but a status color at
-  our capped brightness is more like **8-10 mA**. The ≤10-LED prototype is fine
-  on USB power. The full 20-30 LED ring needs a **5V/3A supply**, the level
-  shifter, and a **1000 µF capacitor** across the strip's power pins.
-- The device is **USB-only, permanently** — no battery, so no diode is needed
-  to combine power sources safely. That also means the LED strip and the
-  ESP32 share one supply rail: a sudden LED current spike (several LEDs
-  switching at once) can sag that shared rail enough to brown out the board.
-  The 1000 µF cap above isn't just for the full ring — it's what prevents
-  mid-session resets on the 5V strip at any LED count, so treat it as needed
-  as soon as VDD moves off 3.3V, not deferred until scaling up.
-- Firmware caps brightness in software (`LED_BRIGHTNESS` in `src/config.h`)
-  so the strip can never draw enough to brown out the board.
+- **Design target: 10 LEDs, powered from a USB 3.0 port** (computer, laptop,
+  or monitor — no dedicated charger, no battery; the device is **USB-only,
+  permanently**). A WS2812B draws up to **60 mA at full white**; budget at
+  10 LEDs full white plus the rest of the board:
+
+  | | |
+  |---|---|
+  | 10× LED @ full white | 600 mA |
+  | ESP32-S3 active, Wi-Fi off | ~80-120 mA |
+  | OLED + IMU + buttons | ~25-30 mA |
+  | **Total** | **~700-750 mA** |
+
+  Against USB 3.0's guaranteed 900 mA, that's only **~150-200 mA headroom
+  (~17-22%)** — workable, but not generous. Not every port labeled "USB 3.0"
+  actually delivers the full 900 mA (some monitor hubs under-deliver spec) —
+  worth confirming with a USB power meter on the actual port(s) this will
+  live on before treating full-white-at-10-LEDs as a settled number.
+- With that little margin, **the 1000 µF cap and level shifter below are
+  required as soon as VDD moves off 3.3V — at 10 LEDs, not deferred to a
+  larger count.** An unbuffered LED current spike is exactly what erases the
+  remaining headroom and browns out the board mid-session. The LED strip and
+  the ESP32 share this one supply rail, so a spike on one side sags the
+  other.
+- Firmware also caps brightness in software (`LED_BRIGHTNESS` in
+  `src/config.h`) as a second line of defense — see the
+  [README roadmap](../README.md#roadmap) for the planned menu-toggle
+  brightness setting (default stays at the safe cap; full brightness becomes
+  opt-in, not assumed) and the same default-off pattern for Wi-Fi once it's
+  rebuilt.
 
 ## Level shifter & capacitor — exact specs
 
 Both parts sit on the LED strip's power/data lines and become necessary the
-moment strip VDD moves off 3.3V onto 5V (see Power notes above) — not
-deferred until the full 20-30 LED ring.
+moment strip VDD moves off 3.3V onto 5V (see Power notes above) — needed now,
+at the current 10-LED design, not deferred to a later scale-up.
 
 **Level shifter — 74AHCT125** (quad 3-state buffer; e.g. TI `SN74AHCT125N`,
 PDIP-14 for the breadboard, or `74AHCT125D` SOIC-14 for a future PCB). AHCT
