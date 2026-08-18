@@ -62,10 +62,11 @@ deliver it. Exceeding it causes a **brownout**: voltage sags and the
 microcontroller resets randomly — a maddening bug if you don't know to look
 for it.
 
-*In this project:* each WS2812B can draw 60 mA at full white; 30 LEDs would be
-1.8 A — way beyond what USB through the devkit can give. That's why the
-firmware caps brightness in software, and why the full LED ring needs its own
-5V/3A supply.
+*In this project:* each WS2812B can draw 60 mA at full white — 10 of them at
+once is 600 mA, plus ~100-150 mA for the rest of the board, against a USB 3.0
+port's guaranteed 900 mA. That leaves only ~150-200 mA of headroom, which is
+why the firmware also caps brightness in software as a second line of
+defense (see [HARDWARE.md](HARDWARE.md#power-notes)).
 
 ## Level shifting
 

@@ -11,8 +11,7 @@ tells you (and everyone walking by) what's going on:
 - **Status light** — LEDs glow **green** (free), **red** (busy), or **amber**
   (timer running). One click toggles available/busy: an instant meeting
   indicator.
-- **Phone dock** — park your phone on it and out of your hands. (Auto-detect
-  of a docked phone is on the [roadmap](#roadmap).)
+- **Phone dock** — park your phone on it and out of your hands.
 - **Mounts either way up** — clip it to the top or bottom monitor edge; the
   screen flips itself the right way up automatically.
 
@@ -24,8 +23,8 @@ Everything below is running on a breadboard right now:
 
 **Working:** display, motion sensor, auto-flip, LED strip, the menu, focus
 timer, pomodoro, and the available/busy status light.
-**Not built yet:** Wi-Fi settings, phone-presence sensing, enclosure,
-proper 5V LED power — see the [roadmap](#roadmap).
+**Not built yet:** Wi-Fi settings, enclosure, proper 5V LED power — see the
+[roadmap](#roadmap).
 
 ## How to use it
 

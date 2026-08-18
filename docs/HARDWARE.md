@@ -89,10 +89,11 @@ something differently, change it there.
 
 - WS2812B is spec'd for **5V**. We currently run it at 3.3V for bring-up
   convenience: colors may look dim or wrong (blue/green fade first). If they
-  do, that's the supply, not the code — move strip VDD to the `5Vin` pin.
-- One nice side effect of 3.3V: the data line matches the ESP32's 3.3V logic,
-  so no level shifter is needed *yet*. At 5V VDD the 3.3V data signal is
-  marginal — add the 74AHCT125 level shifter before scaling up.
+  do, that's the supply, not the code — move strip VDD to the `5Vin` pin. One
+  side effect of the 3.3V bring-up wiring: the data line happens to match the
+  ESP32's own 3.3V logic, so no level shifter is needed *yet* — but that ends
+  the moment VDD moves to 5V (see below; it's not a "later, once we scale up"
+  thing — it's the very next wiring change).
 - **Design target: 10 LEDs, powered from a USB 3.0 port** (computer, laptop,
   or monitor — no dedicated charger, no battery; the device is **USB-only,
   permanently**). A WS2812B draws up to **60 mA at full white**; budget at
@@ -110,12 +111,10 @@ something differently, change it there.
   actually delivers the full 900 mA (some monitor hubs under-deliver spec) —
   worth confirming with a USB power meter on the actual port(s) this will
   live on before treating full-white-at-10-LEDs as a settled number.
-- With that little margin, **the 1000 µF cap and level shifter below are
-  required as soon as VDD moves off 3.3V — at 10 LEDs, not deferred to a
-  larger count.** An unbuffered LED current spike is exactly what erases the
-  remaining headroom and browns out the board mid-session. The LED strip and
-  the ESP32 share this one supply rail, so a spike on one side sags the
-  other.
+- An unbuffered LED current spike is exactly what erases that ~150-200mA
+  margin and browns out the board mid-session — the LED strip and the ESP32
+  share this one supply rail, so a spike on one side sags the other. That's
+  what the cap and level shifter below are for.
 - Firmware also caps brightness in software (`LED_BRIGHTNESS` in
   `src/config.h`) as a second line of defense — see the
   [README roadmap](../README.md#roadmap) for the planned menu-toggle
