@@ -20,9 +20,9 @@ it explains each concept in a few lines.
 | 5-way button | 5DirKey V1-2 | Up/down/left/right/click input |
 | Resistor | 330-470 Ω | Protects the first LED's data input |
 
-Planned but not on the breadboard yet: presence sensor (detect a docked
-phone), USB-C power breakout, 74AHCT125 level shifter, 1000 µF capacitor,
-Schottky diode (see [Roadmap in the README](../README.md#roadmap)).
+Planned but not on the breadboard yet: the **74AHCT125 level shifter** and
+**1000 µF capacitor** for the LED strip's 5V power — exact specs and wiring
+in [Level shifter & capacitor](#level-shifter--capacitor---exact-specs) below.
 
 ## Circuit diagram (breadboard prototype)
 
@@ -89,21 +89,79 @@ something differently, change it there.
 
 - WS2812B is spec'd for **5V**. We currently run it at 3.3V for bring-up
   convenience: colors may look dim or wrong (blue/green fade first). If they
-  do, that's the supply, not the code — move strip VDD to the `5Vin` pin.
-- One nice side effect of 3.3V: the data line matches the ESP32's 3.3V logic,
-  so no level shifter is needed *yet*. At 5V VDD the 3.3V data signal is
-  marginal — add the 74AHCT125 level shifter before scaling up.
-- Budget: a WS2812B draws up to **60 mA at full white**, but a status color at
-  our capped brightness is more like **8-10 mA**. The ≤10-LED prototype is fine
-  on USB power. The full 20-30 LED ring needs a **5V/3A supply**, the level
-  shifter, and a **1000 µF capacitor** across the strip's power pins.
-- Firmware caps brightness in software (`LED_BRIGHTNESS` in `src/config.h`)
-  so the strip can never draw enough to brown out the board.
+  do, that's the supply, not the code — move strip VDD to the `5Vin` pin. One
+  side effect of the 3.3V bring-up wiring: the data line happens to match the
+  ESP32's own 3.3V logic, so no level shifter is needed *yet* — but that ends
+  the moment VDD moves to 5V (see below; it's not a "later, once we scale up"
+  thing — it's the very next wiring change).
+- **Design target: 10 LEDs, powered from a USB 3.0 port** (computer, laptop,
+  or monitor — no dedicated charger, no battery; the device is **USB-only,
+  permanently**). A WS2812B draws up to **60 mA at full white**; budget at
+  10 LEDs full white plus the rest of the board:
+
+  | | |
+  |---|---|
+  | 10× LED @ full white | 600 mA |
+  | ESP32-S3 active, Wi-Fi off | ~80-120 mA |
+  | OLED + IMU + buttons | ~25-30 mA |
+  | **Total** | **~700-750 mA** |
+
+  Against USB 3.0's guaranteed 900 mA, that's only **~150-200 mA headroom
+  (~17-22%)** — workable, but not generous. Not every port labeled "USB 3.0"
+  actually delivers the full 900 mA (some monitor hubs under-deliver spec) —
+  worth confirming with a USB power meter on the actual port(s) this will
+  live on before treating full-white-at-10-LEDs as a settled number.
+- An unbuffered LED current spike is exactly what erases that ~150-200mA
+  margin and browns out the board mid-session — the LED strip and the ESP32
+  share this one supply rail, so a spike on one side sags the other. That's
+  what the cap and level shifter below are for.
+- Firmware also caps brightness in software (`LED_BRIGHTNESS` in
+  `src/config.h`) as a second line of defense — see the
+  [README roadmap](../README.md#roadmap) for the planned menu-toggle
+  brightness setting (default stays at the safe cap; full brightness becomes
+  opt-in, not assumed) and the same default-off pattern for Wi-Fi once it's
+  rebuilt.
+
+## Level shifter & capacitor — exact specs
+
+Both parts sit on the LED strip's power/data lines and become necessary the
+moment strip VDD moves off 3.3V onto 5V (see Power notes above) — needed now,
+at the current 10-LED design, not deferred to a later scale-up.
+
+**Level shifter — 74AHCT125** (quad 3-state buffer; e.g. TI `SN74AHCT125N`,
+PDIP-14 for the breadboard, or `74AHCT125D` SOIC-14 for a future PCB). AHCT
+specifically, not HC/AHC/HCT's other siblings — its inputs use TTL-level
+thresholds, so it reliably reads the ESP32's 3.3V HIGH even though the chip
+itself runs on 5V. Only one of its four gates is needed:
+
+| Pin | Signal | Wire to |
+|---|---|---|
+| 14 | VCC | **5V** rail (same supply as the LED strip — not 3.3V, or the output swing is wrong) |
+| 7 | GND | GND rail |
+| 1 | 1OE̅ (output enable, active low) | GND — ties it permanently enabled |
+| 2 | 1A (input) | GPIO16 (`PIN_LED_DATA`), the existing 3.3V data signal |
+| 3 | 1Y (output) | the existing 330-470 Ω resistor → LED strip DIN |
+| 4, 10, 13 | 2OE̅/3OE̅/4OE̅ (unused gates) | VCC — disables their outputs |
+| 5, 9, 12 | 2A/3A/4A (unused gates) | GND — avoids floating CMOS inputs |
+
+Add a 0.1 µF ceramic capacitor across pins 14 (VCC) and 7 (GND), as close to
+the chip as possible — standard IC decoupling, per the TI datasheet.
+
+**Bulk capacitor — 1000 µF, ≥16V, radial electrolytic** (any brand; e.g.
+Nichicon UVZ-series, Panasonic EEU-FR-series, or an equivalent generic part —
+this is a commodity component, no need to match a specific SKU). Adafruit's
+own NeoPixel guidance sets 6.3V as the floor for a 5V rail; 16V gives real
+margin on a component that's cheap either way and protects against
+transients above nominal 5V.
+
+- **Polarity matters** — it's electrolytic. `+` to the strip's `VDD`, `−`
+  (marked with a stripe) to `GND`. Reversed, it can fail and vent.
+- **Placement matters** — across the strip's own V+/GND pins, physically at
+  the first LED, not back at the ESP32 or the level shifter. That's what
+  actually damps the current spike at its source.
 
 ## Decisions locked for the prototype
 
-- Level shifter (74AHCT125) skipped for now — 3.3V data direct, short wires.
-  Add it back before scaling LED count or finalizing a board.
 - I2C bus: GPIO8 (SDA) / GPIO9 (SCL), shared by display + IMU.
 - IMU CS tied to 3.3V (forces I2C mode). Verify against your breakout's
   silkscreen — some BMI160 boards wire CS differently.

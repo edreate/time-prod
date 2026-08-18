@@ -5,9 +5,11 @@
 #   make monitor        PORT=/dev/cu.usbmodemXXXX
 #   make flash   [ENV=...] PORT=/dev/cu.usbmodemXXXX   (upload, then monitor)
 #
-# ENV selects which firmware to build/upload (see platformio.ini):
-#   time-prod-app  (default) the firmware: menu / timer / availability + auto-flip
-#   test-peripherals         I2C scan + display + IMU readout
+# ENV selects which firmware+board to build/upload (see platformio.ini):
+#   time-prod-app-n16r8   (default) the firmware, on the original N16R8 devkit
+#   test-peripherals-n16r8       I2C scan + display + IMU readout, N16R8
+#   time-prod-app-s3zero         the firmware, on the ESP32-S3 Zero
+#   test-peripherals-s3zero      I2C scan + display + IMU readout, S3 Zero
 #
 # build/upload/monitor/flash all depend on setup having run at least once,
 # so a fresh checkout just needs `make flash` - setup runs automatically.
@@ -21,7 +23,7 @@
 
 PIO  ?= python3 -m platformio
 PORT ?= /dev/cu.usbmodem2101
-ENV  ?= time-prod-app
+ENV  ?= time-prod-app-n16r8
 
 .PHONY: setup build upload monitor flash clean ports
 

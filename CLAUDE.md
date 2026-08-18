@@ -16,27 +16,38 @@ the concepts behind them in [`docs/ELECTRONICS.md`](docs/ELECTRONICS.md).
 ## Build / flash
 
 ```
-make ports                          # find the board's /dev/cu.* name
+make ports                                    # find the board's /dev/cu.* name
 make build
-make flash PORT=/dev/cu.usbmodemXXXX    # upload, then monitor
-make flash ENV=test-peripherals PORT=...  # hardware check firmware
+make flash PORT=/dev/cu.usbmodemXXXX              # upload, then monitor
+make flash ENV=test-peripherals-n16r8 PORT=...    # hardware check, N16R8 devkit
+make flash ENV=test-peripherals-s3zero PORT=...   # hardware check, ESP32-S3 Zero
 ```
 
-`ENV` defaults to `time-prod-app`. `make setup` (PlatformIO install +
+`ENV` defaults to `time-prod-app-n16r8`. `make setup` (PlatformIO install +
 toolchain, ~2 min) runs automatically on first build. macOS renames
 `usbmodem*` across reconnects — re-run `make ports` if an upload can't find
 the board.
 
-## Environments = firmware variants
+Two boards exist during the prototype transition — see
+[`docs/prototype-hardware/README.md`](docs/prototype-hardware/README.md):
+the original ESP32-S3 WROOM-1 N16R8 devkit, and a Tenstar/Waveshare ESP32-S3
+Zero (ESP32-S3FH4R2) being evaluated as a smaller/cheaper replacement. Same
+MCU family and pin map, different flash size and PSRAM mode — hence separate
+envs rather than separate branches.
 
-`platformio.ini` has a shared `[env]` (board, 16MB partitions, lib deps:
-U8g2, DFRobot_BMI160, Adafruit NeoPixel) plus one section per firmware, each
-selecting **exactly one** `.cpp` via `build_src_filter`:
+## Environments = firmware variants × board
 
-| ENV | Source |
-|---|---|
-| `time-prod-app` (default) | `src/main.cpp` (+ the `src/hardware/` + `src/software/` headers it includes) |
-| `test-peripherals` | `src/test_peripherals.cpp` — I2C scan + display + IMU readout |
+`platformio.ini` has a shared `[env]` (chip family, lib deps: U8g2,
+DFRobot_BMI160, Adafruit NeoPixel) plus one section per firmware-on-board
+combination, each selecting **exactly one** `.cpp` via `build_src_filter` and
+the flash size / partition table / PSRAM mode for that specific board:
+
+| ENV | Source | Board |
+|---|---|---|
+| `time-prod-app-n16r8` (default) | `src/main.cpp` | N16R8, 16MB flash |
+| `test-peripherals-n16r8` | `src/test_peripherals.cpp` — I2C scan + display + IMU readout | N16R8, 16MB flash |
+| `time-prod-app-s3zero` | `src/main.cpp` | S3 Zero, 4MB flash / quad PSRAM |
+| `test-peripherals-s3zero` | `src/test_peripherals.cpp` | S3 Zero, 4MB flash / quad PSRAM |
 
 `build_src_filter` is an **allowlist of `.cpp` files**: one it doesn't match is
 silently not compiled, and one matched by two envs breaks both with duplicate
@@ -139,7 +150,13 @@ The Wi-Fi settings page and settings persistence were removed on this branch
 (commit `ba297e1 "simplified"`) and are back on the README roadmap. Commit
 `7c3a6c0` has a working implementation of both (`git show 7c3a6c0:src/main.cpp`)
 if they get rebuilt — that is also where the Info screen lives, which is pure
-Wi-Fi (SSID / AP IP / MAC) and only makes sense alongside them.
+Wi-Fi (SSID / AP IP / MAC) and only makes sense alongside them. **When Wi-Fi
+comes back, it must default OFF on boot with a menu toggle to enable it** —
+the device is USB-powered off arbitrary computer/laptop/monitor ports (see
+Power notes in `docs/HARDWARE.md`), and Wi-Fi's active/TX current isn't
+budgeted into that by default. Same default-off-menu-toggle pattern applies
+to a planned max-brightness LED mode (`LED_BRIGHTNESS` in `config.h` stays at
+its current power-safe cap unless the user opts in).
 
 Pomodoro was removed by the same commit but has since been restored onto the
 module structure, with its durations as `config.h` defines rather than
